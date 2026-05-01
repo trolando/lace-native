@@ -1,16 +1,46 @@
-//! # lace-native-build
+//! Build-time code generator for [lace-native](https://crates.io/crates/lace-native)
+//! task definitions.
 //!
-//! Build-time code generator for Lace task definitions.
+//! This crate is used as a build dependency. It reads a `tasks.def` file
+//! and generates:
+//! - A C file with Lace `TASK()` macro invocations and non-inline FFI wrappers
+//! - A Rust file with safe wrappers, borrow-checked guards, and `extern "C"` trampolines
 //!
-//! Reads a `tasks.def` file and generates C wrappers and Rust bindings.
+//! # Usage
 //!
-//! ## Usage in build.rs
-//!
+//! In your `build.rs`:
 //! ```rust,ignore
 //! fn main() {
-//!     lace_build::process("tasks.def")
-//!         .lace_dir("/path/to/lace")   // or set LACE_DIR env var
-//!         .compile();
+//!     lace_native_build::process("tasks.def").compile();
+//! }
+//! ```
+//!
+//! The generated Rust bindings are included in your source via:
+//! ```rust,ignore
+//! include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
+//! ```
+//!
+//! # tasks.def format
+//!
+//! ```text
+//! c {
+//!     #include "lace.h"       // C headers, copied verbatim
+//! }
+//!
+//! rust {
+//!     use crate::MyType;      // Rust imports, copied verbatim
+//! }
+//!
+//! types {
+//!     BDD = uint64_t          // Custom value types: RustType = CType
+//! }
+//!
+//! task fib(n: i32) -> i32                        // free function
+//! task process(data: &MyData, len: usize) -> u64 // reference param
+//!
+//! impl MyTree {
+//!     task search(&self, key: u64) -> bool       // shared method
+//!     task insert(&mut self, key: u64, val: u64) // exclusive method
 //! }
 //! ```
 
@@ -23,6 +53,9 @@ use std::path::{Path, PathBuf};
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Start processing a `tasks.def` file. Returns a [`Builder`] for configuration.
+///
+/// The path is relative to `CARGO_MANIFEST_DIR` (your crate root).
 pub fn process(def_path: impl AsRef<Path>) -> Builder {
     Builder {
         def_path: def_path.as_ref().to_path_buf(),
@@ -32,6 +65,10 @@ pub fn process(def_path: impl AsRef<Path>) -> Builder {
     }
 }
 
+/// Configuration builder for Lace code generation and C compilation.
+///
+/// Created by [`process()`]. Call [`compile()`](Builder::compile) to
+/// run the code generator and compile the resulting C wrappers.
 pub struct Builder {
     def_path: PathBuf,
     lace_dir: Option<PathBuf>,
@@ -40,21 +77,42 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Override the Lace source directory (containing `lace.h`).
+    ///
+    /// If not set, headers are found automatically via the `lace-native`
+    /// crate dependency (`DEP_LACE_INCLUDE`). You can also set the
+    /// `LACE_DIR` environment variable as a fallback.
     pub fn lace_dir(mut self, dir: impl AsRef<Path>) -> Self {
         self.lace_dir = Some(dir.as_ref().to_path_buf());
         self
     }
 
+    /// Add an extra C include directory for compilation.
+    ///
+    /// Use this when your task signatures reference types defined in
+    /// headers outside the Lace source tree.
     pub fn include(mut self, dir: impl AsRef<Path>) -> Self {
         self.extra_c_includes.push(dir.as_ref().to_path_buf());
         self
     }
 
+    /// Add an extra C source file to compile alongside the generated wrappers.
     pub fn c_file(mut self, path: impl AsRef<Path>) -> Self {
         self.extra_c_files.push(path.as_ref().to_path_buf());
         self
     }
 
+    /// Parse `tasks.def`, generate C and Rust code, and compile the C wrappers.
+    ///
+    /// This is the main entry point. It:
+    /// 1. Reads and parses the `tasks.def` file
+    /// 2. Generates `lace_tasks.c` (C wrappers) and `lace_tasks.rs` (Rust bindings)
+    /// 3. Compiles the C code using the `cc` crate
+    ///
+    /// The generated Rust file should be included in your source with:
+    /// ```rust,ignore
+    /// include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
+    /// ```
     pub fn compile(self) {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -173,11 +231,23 @@ struct DefFile {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Parser (unchanged)
+// Parser
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
 enum State { TopLevel, InCBlock, InRustBlock, InTypesBlock, InImplBlock(String) }
+
+/// Report a parse error in tasks.def with location and context.
+fn def_error(line_no: usize, line: &str, msg: &str) -> ! {
+    panic!(
+        "\n\
+         error: tasks.def:{}: {}\n\
+         |\n\
+         |  {}\n\
+         |\n",
+        line_no + 1, msg, line
+    )
+}
 
 fn parse_def_file(content: &str) -> DefFile {
     let mut state = State::TopLevel;
@@ -207,7 +277,10 @@ fn parse_def_file(content: &str) -> DefFile {
                 else if line.starts_with("task ") {
                     def.tasks.push(parse_task_line(line, None, ln));
                 }
-                else { panic!("tasks.def:{}: unexpected: {}", ln+1, line); }
+                else {
+                    def_error(ln, line,
+                        "unexpected line (expected 'task', 'impl', 'c {', 'rust {', or 'types {')");
+                }
             }
             State::InCBlock => {
                 if line == "}" { state = State::TopLevel; }
@@ -221,7 +294,10 @@ fn parse_def_file(content: &str) -> DefFile {
                 if line == "}" { state = State::TopLevel; }
                 else {
                     let p: Vec<&str> = line.splitn(2, '=').collect();
-                    assert!(p.len() == 2, "tasks.def:{}: bad type map: {}", ln+1, line);
+                    if p.len() != 2 {
+                        def_error(ln, line,
+                            "invalid type mapping (expected 'RustType = CType')");
+                    }
                     def.type_map.push((p[0].trim().into(), p[1].trim().into()));
                 }
             }
@@ -230,10 +306,21 @@ fn parse_def_file(content: &str) -> DefFile {
                 else if line.starts_with("task ") {
                     def.tasks.push(parse_task_line(line, Some(tn.clone()), ln));
                 }
-                else { panic!("tasks.def:{}: expected 'task': {}", ln+1, line); }
+                else {
+                    def_error(ln, line,
+                        "expected 'task' declaration inside impl block");
+                }
             }
         }
     }
+
+    if def.tasks.is_empty() {
+        panic!(
+            "\nerror: tasks.def contains no task declarations.\n\
+             Add at least one task, e.g.:\n\n  task my_task(n: i32) -> i32\n"
+        );
+    }
+
     def
 }
 
@@ -242,8 +329,12 @@ fn parse_task_line(line: &str, impl_type: Option<String>, ln: usize) -> TaskDef 
     let (sig, ret_type) = if let Some(i) = rest.find("->") {
         (rest[..i].trim(), Some(rest[i+2..].trim().to_string()))
     } else { (rest, None) };
-    let open = sig.find('(').unwrap_or_else(|| panic!("tasks.def:{}: missing '('", ln+1));
-    let close = sig.rfind(')').unwrap_or_else(|| panic!("tasks.def:{}: missing ')'", ln+1));
+    let open = sig.find('(')
+        .unwrap_or_else(|| def_error(ln, line,
+            "missing '(' — expected: task name(param: Type, ...) -> RetType"));
+    let close = sig.rfind(')')
+        .unwrap_or_else(|| def_error(ln, line,
+            "missing ')' — expected: task name(param: Type, ...) -> RetType"));
     let name = sig[..open].trim().to_string();
     let pstr = sig[open+1..close].trim();
     let mut params = Vec::new();
@@ -254,13 +345,15 @@ fn parse_task_line(line: &str, impl_type: Option<String>, ln: usize) -> TaskDef 
             if ps == "&self" { self_kind = Some(SelfKind::Ref); }
             else if ps == "&mut self" { self_kind = Some(SelfKind::MutRef); }
             else {
-                let c = ps.find(':').unwrap_or_else(|| panic!("tasks.def:{}: missing ':'", ln+1));
+                let c = ps.find(':')
+                    .unwrap_or_else(|| def_error(ln, line,
+                        &format!("missing ':' in parameter '{}' — expected: name: Type", ps)));
                 params.push(Param { name: ps[..c].trim().into(), rust_type: ps[c+1..].trim().into() });
             }
         }
     }
     if self_kind.is_some() && impl_type.is_none() {
-        panic!("tasks.def:{}: &self outside impl block", ln+1);
+        def_error(ln, line, "&self can only be used inside an impl block");
     }
     TaskDef { name, params, ret_type, impl_type, self_kind }
 }
@@ -291,7 +384,13 @@ fn rust_type_to_c(rt: &str, m: &[(String, String)]) -> String {
         "usize"=>"size_t","isize"=>"ptrdiff_t","bool"=>"_Bool",
         "f32"=>"float","f64"=>"double",
         _ if rt.starts_with("*mut ") || rt.starts_with("*const ") => "void*".into(),
-        _ => panic!("Unknown type '{}' — add to types {{ }} in tasks.def", rt),
+        _ => panic!(
+            "\nerror: unknown Rust type '{}' in tasks.def.\n\
+             Add a mapping in the types {{ }} block, e.g.:\n\n  types {{\n      {} = <c_type>\n  }}\n\n\
+             Built-in types: i8..i64, u8..u64, usize, isize, bool, f32, f64,\n\
+             *const T, *mut T, &T, &mut T\n",
+            rt, rt
+        ),
     }.into()
 }
 

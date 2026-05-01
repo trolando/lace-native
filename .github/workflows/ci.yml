@@ -41,7 +41,7 @@ jobs:
       run: cargo build --release ${{ matrix.features }}
 
     - name: Test
-      run: cargo test --release ${{ matrix.features }} -- --test-threads=1
+      run: cargo test --release ${{ matrix.features }}
 
     - name: Verify fib example
       run: |
@@ -73,7 +73,7 @@ jobs:
       run: cargo build --release ${{ matrix.features }}
 
     - name: Test
-      run: cargo test --release ${{ matrix.features }} -- --test-threads=1
+      run: cargo test --release ${{ matrix.features }}
 
     - name: Verify fib example
       run: |
@@ -105,7 +105,7 @@ jobs:
       run: cargo build --release ${{ matrix.features }}
 
     - name: Test
-      run: cargo test --release ${{ matrix.features }} -- --test-threads=1
+      run: cargo test --release ${{ matrix.features }}
 
     - name: Verify fib example
       shell: bash
@@ -141,7 +141,7 @@ jobs:
     - name: Test with LACE_DIR
       env:
         LACE_DIR: /tmp/lace
-      run: cargo test --release -- --test-threads=1
+      run: cargo test --release
 
     - name: Verify fib
       env:

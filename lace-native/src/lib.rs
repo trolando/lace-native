@@ -1,23 +1,77 @@
-//! # lace-native
-//!
 //! Rust bindings for the [Lace](https://github.com/trolando/lace)
 //! work-stealing framework for multi-core fork-join parallelism.
 //!
-//! This crate provides the runtime: starting/stopping Lace and the [`Worker`]
-//! handle type. Task definitions live in downstream crates using
-//! [`lace-native-build`](https://crates.io/crates/lace-native-build) to generate
-//! bindings from a `tasks.def` file.
+//! This crate provides the Lace runtime: worker lifecycle management
+//! and the [`Worker`] handle type. Task definitions are written in a
+//! `tasks.def` file and compiled by the companion crate
+//! [`lace-native-build`](https://crates.io/crates/lace-native-build).
 //!
-//! ## Quick start
+//! # Quick start
 //!
-//! See the [`examples/fib`](https://github.com/trolando/lace-rs/tree/main/examples/fib)
-//! directory for a complete working example.
+//! **`Cargo.toml`:**
+//! ```toml
+//! [dependencies]
+//! lace-native = "0.1"
+//!
+//! [build-dependencies]
+//! lace-native-build = "0.1"
+//! ```
+//!
+//! **`build.rs`:**
+//! ```rust,ignore
+//! fn main() {
+//!     lace_native_build::process("tasks.def").compile();
+//! }
+//! ```
+//!
+//! **`tasks.def`:**
+//! ```text
+//! c {
+//!     #include "lace.h"
+//! }
+//! task fib(n: i32) -> i32
+//! ```
+//!
+//! **`src/main.rs`:**
+//! ```rust,ignore
+//! include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
+//!
+//! fn fib(w: &Worker, n: i32) -> i32 {
+//!     if n < 2 { return n; }
+//!     let guard = fib_spawn(w, n - 1);
+//!     let a = fib(w, n - 2);
+//!     guard.sync(w) + a
+//! }
+//!
+//! fn main() {
+//!     lace_native::start(0, 0, 0);
+//!     println!("fib(42) = {}", fib_run(42));
+//!     lace_native::stop();
+//! }
+//! ```
+//!
+//! # Lifecycle
+//!
+//! Call [`start()`] to launch worker threads, then use task functions
+//! (`_run`, `_spawn`/`_sync`, etc.) to execute parallel work. Call
+//! [`stop()`] when done. Lace supports multiple start/stop cycles
+//! within the same process.
+//!
+//! # Features
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `backoff` | ✓ | Workers sleep when idle (futex-based progressive backoff) |
+//! | `hwloc` | | Pin workers to CPU cores using hwloc |
+//! | `stats` | | Print per-worker steal/task/split counters on [`stop()`] |
 
 use std::ffi::c_uint;
 
 /// Opaque Lace worker type (`lace_worker` in C).
 ///
-/// Used only in FFI signatures. Safe code uses [`Worker`].
+/// This is an FFI implementation detail used by generated code.
+/// Safe code uses [`Worker`].
+#[doc(hidden)]
 #[repr(C)]
 pub struct LaceWorker {
     _opaque: [u8; 0],
@@ -52,12 +106,18 @@ impl Worker {
         self.raw
     }
 
-    /// Worker ID (0-based index), or -1 if not a worker thread.
+    /// Returns this worker's ID (0-based index).
+    ///
+    /// Returns -1 if called from a non-worker thread, though in
+    /// normal usage task bodies always run on worker threads.
     pub fn id(&self) -> i32 {
         unsafe { lace_worker_id_ext() }
     }
 
-    /// Total number of Lace workers.
+    /// Returns the total number of Lace workers.
+    ///
+    /// Equivalent to the value passed to [`start()`], or the
+    /// auto-detected core count if 0 was passed.
     pub fn count(&self) -> u32 {
         unsafe { lace_worker_count() }
     }
@@ -65,7 +125,8 @@ impl Worker {
     /// Check for and handle interrupting tasks (NEWFRAME/TOGETHER).
     ///
     /// Call this periodically in long-running tasks to enable
-    /// cooperative interruption.
+    /// cooperative interruption. Without this, NEWFRAME and TOGETHER
+    /// tasks may be delayed until the next spawn or sync.
     pub fn yield_now(&self) {
         unsafe { lace_yield(self.raw) }
     }
@@ -73,34 +134,53 @@ impl Worker {
 
 unsafe impl Send for Worker {}
 
-/// Start the Lace framework.
+/// Start the Lace framework with the given number of workers.
 ///
-/// - `n_workers`: number of worker threads, or 0 for auto-detect.
-/// - `dqsize`: task deque size per worker, or 0 for default (1M slots).
-/// - `stacksize`: program stack size per worker, or 0 for default.
+/// This launches worker threads that will execute spawned tasks via
+/// work-stealing. Must be called before any task functions (`_run`,
+/// `_spawn`, etc.).
+///
+/// # Arguments
+///
+/// * `n_workers` — Number of worker threads. Pass 0 to auto-detect
+///   from the number of available CPU cores.
+/// * `dqsize` — Task deque size per worker (number of task slots).
+///   Pass 0 for the default (typically 1M slots).
+/// * `stacksize` — Program stack size per worker thread in bytes.
+///   Pass 0 for the system default.
 pub fn start(n_workers: u32, dqsize: usize, stacksize: usize) {
     unsafe { lace_start(n_workers as c_uint, dqsize, stacksize) }
 }
 
-/// Stop the Lace framework, terminating all workers.
+/// Stop the Lace framework, joining all worker threads.
+///
+/// After this call, [`is_running()`] returns `false`. You may call
+/// [`start()`] again to restart the framework.
 pub fn stop() {
     unsafe { lace_stop() }
 }
 
-/// Check whether Lace is currently running.
+/// Returns `true` if the Lace framework is currently running.
 pub fn is_running() -> bool {
     unsafe { lace_is_running() != 0 }
 }
 
-/// Get the number of Lace workers.
+/// Returns the number of Lace worker threads.
+///
+/// Only meaningful while Lace is running.
 pub fn worker_count() -> u32 {
     unsafe { lace_worker_count() }
 }
 
-/// Get the [`Worker`] handle for the current Lace thread.
+/// Returns a [`Worker`] handle for the current thread.
+///
+/// This is only valid when called from a Lace worker thread (i.e.,
+/// from within a task body). For external threads, use the `_run`
+/// functions instead, which handle worker dispatch automatically.
 ///
 /// # Panics
-/// Panics if called from a non-Lace thread.
+///
+/// Panics if the current thread is not a Lace worker.
 pub fn get_worker() -> Worker {
     unsafe {
         let w = lace_get_worker_ext();
@@ -109,9 +189,10 @@ pub fn get_worker() -> Worker {
     }
 }
 
-/// Barrier: block until all Lace workers reach this point.
+/// Block until all Lace workers reach this barrier.
 ///
-/// Typically used inside TOGETHER tasks.
+/// Typically used inside `_together` tasks to synchronize all workers
+/// before proceeding.
 pub fn barrier() {
     unsafe { lace_barrier() }
 }

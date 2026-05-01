@@ -1,0 +1,8 @@
+# tasks.def — benchmark tasks
+
+c {
+    #include "lace.h"
+}
+
+task fib(n: i32) -> i32
+task nqueens(a: *const i32, n: i32, d: i32, i: i32) -> i64
