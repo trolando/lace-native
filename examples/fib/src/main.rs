@@ -19,9 +19,9 @@ fn fib_c_style(w: &Worker, n: i32) -> i32 {
     if n < 2 {
         return n;
     }
-    let _ = fib_spawn(w, n - 1);
+    let _ = fib_c_style_spawn(w, n - 1);
     let a = fib_c_style(w, n - 2);
-    let b = fib_sync(w);
+    let b = fib_c_style_sync(w);
     a + b
 }
 
