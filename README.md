@@ -2,8 +2,6 @@
 
 [![CI](https://github.com/trolando/lace-native/actions/workflows/ci.yml/badge.svg)](https://github.com/trolando/lace-native/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-![Rust 2021](https://img.shields.io/badge/Rust-2021-orange.svg)
-![C11](https://img.shields.io/badge/C-11-blue.svg)
 
 Rust bindings for the native C implementation of [Lace](https://github.com/trolando/lace), a work-stealing framework for fine-grained fork-join parallelism on multi-core computers.
 
