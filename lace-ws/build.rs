@@ -10,6 +10,24 @@ fn target_os() -> String {
     env::var("CARGO_CFG_TARGET_OS").unwrap_or_default()
 }
 
+fn target_env() -> String {
+    env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default()
+}
+
+fn configure_c_compiler(build: &mut cc::Build) {
+    build.std("c11");
+
+    if target_env() == "msvc" {
+        // Keep this in sync with Lace's CMake MSVC flags.
+        // /Zc:__STDC__ makes MSVC define __STDC__ for C11/C17 code.
+        // /Zc:preprocessor enables the standard-conforming preprocessor.
+        // /experimental:c11atomics enables <stdatomic.h> in /std:c11 mode.
+        build.flag("/Zc:__STDC__");
+        build.flag("/Zc:preprocessor");
+        build.flag("/experimental:c11atomics");
+    }
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -64,6 +82,8 @@ fn main() {
         .file(manifest_dir.join("csrc").join("lace_helpers.c"))
         .include(&lace_src)
         .include(&out_dir);
+
+    configure_c_compiler(&mut build);
 
     if target_os() == "linux" {
         build.define("_GNU_SOURCE", None);

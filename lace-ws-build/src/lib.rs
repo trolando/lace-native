@@ -114,6 +114,8 @@ impl Builder {
             .include(&lace_include)
             .include(&config_include);
 
+        configure_c_compiler(&mut build);
+
         // _GNU_SOURCE needed on Linux for sched_getaffinity etc.
         if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
             build.define("_GNU_SOURCE", None);
@@ -127,6 +129,20 @@ impl Builder {
         }
 
         build.compile("lace_tasks");
+    }
+}
+
+fn configure_c_compiler(build: &mut cc::Build) {
+    build.std("c11");
+
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        // Keep this in sync with Lace's CMake MSVC flags.
+        // /Zc:__STDC__ makes MSVC define __STDC__ for C11/C17 code.
+        // /Zc:preprocessor enables the standard-conforming preprocessor.
+        // /experimental:c11atomics enables <stdatomic.h> in /std:c11 mode.
+        build.flag("/Zc:__STDC__");
+        build.flag("/Zc:preprocessor");
+        build.flag("/experimental:c11atomics");
     }
 }
 
