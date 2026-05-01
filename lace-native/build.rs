@@ -57,7 +57,7 @@ fn main() {
     let has_sched = if target_os() == "linux" { "1" } else { "0" };
 
     // Generate lace_config.h — the single source of truth for Lace configuration.
-    // lace-ws-build reads this via DEP_LACE_CONFIG_INCLUDE so that the generated
+    // lace-native-build reads this via DEP_LACE_CONFIG_INCLUDE so that the generated
     // task wrappers use the exact same settings as the runtime.
     let config = format!(
         "#define LACE_PIE_TIMES 0\n\
@@ -71,7 +71,7 @@ fn main() {
     fs::write(out_dir.join("lace_config.h"), &config)
         .expect("Failed to write lace_config.h");
 
-    // Export include paths for lace-ws-build (via links = "lace" → DEP_LACE_*)
+    // Export include paths for lace-native-build (via links = "lace" -> DEP_LACE_*).
     println!("cargo:include={}", lace_src.display());
     println!("cargo:config_include={}", out_dir.display());
 

@@ -1,11 +1,11 @@
-//! # lace-ws
+//! # lace-native
 //!
 //! Rust bindings for the [Lace](https://github.com/trolando/lace)
 //! work-stealing framework for multi-core fork-join parallelism.
 //!
 //! This crate provides the runtime: starting/stopping Lace and the [`Worker`]
 //! handle type. Task definitions live in downstream crates using
-//! [`lace-ws-build`](https://crates.io/crates/lace-ws-build) to generate
+//! [`lace-native-build`](https://crates.io/crates/lace-native-build) to generate
 //! bindings from a `tasks.def` file.
 //!
 //! ## Quick start

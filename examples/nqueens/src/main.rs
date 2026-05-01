@@ -77,8 +77,8 @@ fn main() {
         i += 1;
     }
 
-    lace_ws::start(workers, dqsize, 0);
-    println!("Running nqueens n={} with {} workers...", n, lace_ws::worker_count());
+    lace_native::start(workers, dqsize, 0);
+    println!("Running nqueens n={} with {} workers...", n, lace_native::worker_count());
 
     let t = Instant::now();
     let result = nqueens_run(std::ptr::null(), n, -1, 0);
@@ -87,5 +87,5 @@ fn main() {
     println!("Result: nqueens({}) = {}", n, result);
     println!("Time: {:.6}s", elapsed.as_secs_f64());
 
-    lace_ws::stop();
+    lace_native::stop();
 }

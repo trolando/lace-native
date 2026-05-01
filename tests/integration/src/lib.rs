@@ -61,7 +61,7 @@ mod tests {
     fn fib_correctness() {
         let _lock = LACE_MUTEX.lock().unwrap();
 
-        lace_ws::start(1, 0, 0);
+        lace_native::start(1, 0, 0);
 
         assert_eq!(fib_run(0), 0);
         assert_eq!(fib_run(1), 1);
@@ -71,14 +71,14 @@ mod tests {
         assert_eq!(fib_run(20), 6765);
         assert_eq!(fib_run(30), 832040);
 
-        lace_ws::stop();
+        lace_native::stop();
     }
 
     #[test]
     fn nqueens_correctness() {
         let _lock = LACE_MUTEX.lock().unwrap();
 
-        lace_ws::start(1, 0, 0);
+        lace_native::start(1, 0, 0);
 
         let expected: &[(i32, i64)] = &[
             (1, 1), (2, 0), (3, 0), (4, 2), (5, 10),
@@ -91,36 +91,36 @@ mod tests {
             assert_eq!(result, expect, "nqueens({}) failed", n);
         }
 
-        lace_ws::stop();
+        lace_native::stop();
     }
 
     #[test]
     fn lifecycle() {
         let _lock = LACE_MUTEX.lock().unwrap();
 
-        assert!(!lace_ws::is_running());
+        assert!(!lace_native::is_running());
 
-        lace_ws::start(2, 0, 0);
-        assert!(lace_ws::is_running());
-        assert!(lace_ws::worker_count() >= 1);
+        lace_native::start(2, 0, 0);
+        assert!(lace_native::is_running());
+        assert!(lace_native::worker_count() >= 1);
         assert_eq!(fib_run(10), 55);
-        lace_ws::stop();
+        lace_native::stop();
 
-        assert!(!lace_ws::is_running());
+        assert!(!lace_native::is_running());
 
-        lace_ws::start(1, 0, 0);
-        assert!(lace_ws::is_running());
-        assert_eq!(lace_ws::worker_count(), 1);
+        lace_native::start(1, 0, 0);
+        assert!(lace_native::is_running());
+        assert_eq!(lace_native::worker_count(), 1);
         assert_eq!(fib_run(10), 55);
-        lace_ws::stop();
+        lace_native::stop();
     }
 
     #[test]
     fn nqueens_uses_c_style_sync() {
         let _lock = LACE_MUTEX.lock().unwrap();
 
-        lace_ws::start(1, 0, 0);
+        lace_native::start(1, 0, 0);
         assert_eq!(nqueens_run(std::ptr::null(), 8, -1, 0), 92);
-        lace_ws::stop();
+        lace_native::stop();
     }
 }

@@ -19,11 +19,11 @@ jobs:
       matrix:
         include:
           - { name: 'default features',    features: '',                            }
-          - { name: 'stats',               features: '--features lace-ws/stats',    }
+          - { name: 'stats',               features: '--features lace-native/stats',    }
           - { name: 'no backoff',          features: '--no-default-features',       }
-          - { name: 'stats + no backoff',  features: '--no-default-features --features lace-ws/stats', }
-          - { name: 'hwloc',              features: '--features lace-ws/hwloc',     install: 'libhwloc-dev', }
-          - { name: 'all features',        features: '--features lace-ws/stats,lace-ws/hwloc', install: 'libhwloc-dev', }
+          - { name: 'stats + no backoff',  features: '--no-default-features --features lace-native/stats', }
+          - { name: 'hwloc',              features: '--features lace-native/hwloc',     install: 'libhwloc-dev', }
+          - { name: 'all features',        features: '--features lace-native/stats,lace-native/hwloc', install: 'libhwloc-dev', }
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -64,7 +64,7 @@ jobs:
       matrix:
         include:
           - { name: 'default features', features: '',                         }
-          - { name: 'stats',            features: '--features lace-ws/stats', }
+          - { name: 'stats',            features: '--features lace-native/stats', }
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
@@ -96,7 +96,7 @@ jobs:
       matrix:
         include:
           - { name: 'MSVC default',  features: '',                         }
-          - { name: 'MSVC stats',    features: '--features lace-ws/stats', }
+          - { name: 'MSVC stats',    features: '--features lace-native/stats', }
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable

@@ -1,5 +1,5 @@
 [package]
-name = "lace-ws"
+name = "lace-native"
 version = "0.1.0"
 edition = "2021"
 description = "Rust bindings for the Lace work-stealing framework for multi-core fork-join parallelism"
