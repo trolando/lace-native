@@ -17,7 +17,7 @@ pure safe Rust.
 
 ## Quick start
 
-**Cargo.toml:**
+Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 lace-ws = "0.1"
@@ -26,14 +26,14 @@ lace-ws = "0.1"
 lace-ws-build = "0.1"
 ```
 
-**build.rs:**
+Create `build.rs`:
 ```rust
 fn main() {
     lace_ws_build::process("tasks.def").compile();
 }
 ```
 
-**tasks.def:**
+Create `tasks.def`:
 ```
 c {
     #include "lace.h"
@@ -41,7 +41,7 @@ c {
 task fib(n: i32) -> i32
 ```
 
-**src/main.rs:**
+Write `src/main.rs`:
 ```rust
 include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
 
@@ -53,10 +53,60 @@ fn fib(w: &Worker, n: i32) -> i32 {
 }
 
 fn main() {
-    lace_ws::start(0, 0, 0);
+    lace_ws::start(0, 0, 0);  // auto workers, default deque, default stack
     println!("fib(42) = {}", fib_run(42));
     lace_ws::stop();
 }
+```
+
+## Building and running
+
+```bash
+# Build the workspace
+cargo build --release
+
+# Run fibonacci (default: 42, auto-detect workers)
+cargo run --release -p lace-example-fib
+
+# Run with options
+cargo run --release -p lace-example-fib -- -w 4 42
+
+# Run N-Queens (default: n=14)
+cargo run --release -p lace-example-nqueens -- -w 4 14
+```
+
+Both examples accept:
+- `-w <n>` — number of worker threads (0 = auto-detect, default)
+- `-q <n>` — task deque size per worker (0 = default)
+
+## Features
+
+Features are set on the `lace-ws` crate and control how the Lace C runtime
+is compiled. They propagate automatically to `lace-ws-build` so that the
+task wrappers and runtime always agree on configuration.
+
+| Feature | Default | Description |
+|---|---|---|
+| `backoff` | ✓ | Workers sleep when idle (futex-based progressive backoff) |
+| `hwloc` | | Pin workers to CPU cores using hwloc |
+| `stats` | | Print per-worker steal/task/split counters on `lace_stop()` |
+
+```bash
+# Build with statistics enabled
+cargo build --release --features lace-ws/stats
+
+# Build with hwloc pinning (requires libhwloc-dev)
+cargo build --release --features lace-ws/hwloc
+
+# Build with no backoff (busy-wait stealing)
+cargo build --release --no-default-features
+
+# Combine features
+cargo build --release --features lace-ws/stats,lace-ws/hwloc
+
+# In your Cargo.toml for fine-grained control:
+# [dependencies]
+# lace-ws = { version = "0.1", default-features = false, features = ["stats"] }
 ```
 
 ## Generated API per task
@@ -67,37 +117,50 @@ For `task fib(n: i32) -> i32`:
 |---|---|
 | `fib_spawn(w, n) → FibGuard` | Fork: spawn task, returns guard |
 | `guard.sync(w) → i32` | Join via guard (Rust style) |
+| `guard.drop(w)` | Cancel via guard (unless already stolen) |
 | `fib_sync(w) → i32` | Join without guard (C style) |
-| `guard.drop(w)` / `fib_drop(w)` | Cancel (unless already stolen) |
+| `fib_drop(w)` | Cancel without guard (C style) |
 | `fib(w, n) → i32` | Direct call, no parallelism |
 | `fib_run(n) → i32` | Auto-dispatch: CALL if on worker, RUN if external |
 | `fib_newframe(n) → i32` | Interrupt: all workers help |
 | `fib_together(n)` | All workers run a copy |
 
+**Guard vs C-style:** Both compile to identical code. Use guards when
+parameters include `&mut T` (the borrow checker enforces safety). Use the
+C-style standalone `fib_sync(w)` for loops with multiple spawn/sync, as in
+the N-Queens example.
+
 ## tasks.def format
 
 ```
-# C headers for type resolution
+# Comments start with #
+
+# C headers for type resolution (lines inside are passed verbatim,
+# so #include works — it is NOT treated as a comment here)
 c {
     #include "lace.h"
     #include "my_types.h"
 }
 
-# Rust imports
+# Rust imports for types used in signatures
 rust {
     use crate::MyStruct;
 }
 
 # Custom value types: RustType = CType
+# Primitives (i8..i64, u8..u64, usize, isize, bool, f32, f64) are built-in.
+# References (&T, &mut T) map to void* automatically.
+# Raw pointers (*const T, *mut T) map to void* automatically.
 types {
     BDD = uint64_t
 }
 
-# Free functions
+# Free functions — user implements fn name(w: &Worker, ...) -> RetType
 task fib(n: i32) -> i32
+task do_work(start: usize, end: usize)
 task process(data: &MyData, count: usize) -> u64
 
-# Methods
+# Methods — user implements fn name(&self, w: &Worker, ...) -> RetType
 impl MyTree {
     task search(&self, key: u64) -> bool
     task insert(&mut self, key: u64, value: u64)
@@ -114,20 +177,21 @@ impl MyTree {
   data structures.
 - Guards are `#[must_use]` — forgetting to sync is a compile warning.
 
-## Features
-
-| Feature | Default | Description |
-|---|---|---|
-| `backoff` | ✓ | Workers sleep when idle (futex-based) |
-| `hwloc` | | Pin workers to cores using hwloc |
-| `stats` | | Enable per-worker steal/task/split counters |
-
 ## Development
 
 To develop against a local Lace checkout instead of vendored sources:
 ```bash
 export LACE_DIR=/path/to/lace
 cargo build
+```
+
+When `LACE_DIR` is set, the `lace-ws` crate compiles from that tree instead
+of the vendored `lace.h`/`lace.c`. This lets you test Lace changes without
+re-vendoring.
+
+To update the vendored Lace sources:
+```bash
+cp /path/to/lace/src/lace.{h,c} lace-ws/vendor/
 ```
 
 ## License

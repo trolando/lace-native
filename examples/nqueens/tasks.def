@@ -1,0 +1,13 @@
+# tasks.def — N-Queens benchmark for Lace
+
+c {
+    #include "lace.h"
+}
+
+rust {
+}
+
+types {
+}
+
+task nqueens(a: *const i32, n: i32, d: i32, i: i32) -> i64

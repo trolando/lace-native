@@ -4,4 +4,5 @@ members = [
     "lace-ws",
     "lace-ws-build",
     "examples/fib",
+    "examples/nqueens",
 ]

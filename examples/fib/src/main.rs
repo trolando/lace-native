@@ -1,10 +1,8 @@
-// Pull in lace types and generated task bindings
+use std::time::Instant;
+
 include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
 
 /// Fibonacci — guard style (Rust-idiomatic).
-///
-/// The guard tracks the spawn→sync obligation.
-/// For &mut parameters, it also enforces borrow safety.
 fn fib(w: &Worker, n: i32) -> i32 {
     if n < 2 {
         return n;
@@ -16,9 +14,6 @@ fn fib(w: &Worker, n: i32) -> i32 {
 }
 
 /// Fibonacci — C style (no guard).
-///
-/// Closer to the original C API. The `let _ =` silences the
-/// #[must_use] warning on the guard.
 #[allow(dead_code)]
 fn fib_c_style(w: &Worker, n: i32) -> i32 {
     if n < 2 {
@@ -30,14 +25,40 @@ fn fib_c_style(w: &Worker, n: i32) -> i32 {
     a + b
 }
 
-fn main() {
-    let n: i32 = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(42);
+fn usage(name: &str) {
+    eprintln!("Usage: {} [-w <workers>] [-q <dqsize>] <n>", name);
+    eprintln!();
+    eprintln!("  -w <workers>  Number of worker threads (0 = auto, default: 0)");
+    eprintln!("  -q <dqsize>   Task deque size per worker (default: 0 = auto)");
+    eprintln!("  <n>           Fibonacci number to compute (default: 42)");
+}
 
-    lace_ws::start(0, 0, 0);
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let mut workers: u32 = 0;
+    let mut dqsize: usize = 0;
+    let mut n: i32 = 42;
+    let mut i = 1;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "-w" => { i += 1; workers = args[i].parse().expect("-w requires a number"); }
+            "-q" => { i += 1; dqsize = args[i].parse().expect("-q requires a number"); }
+            "-h" | "--help" => { usage(&args[0]); return; }
+            _ => { n = args[i].parse().expect("expected a number for <n>"); }
+        }
+        i += 1;
+    }
+
+    lace_ws::start(workers, dqsize, 0);
+    println!("Running fib({}) with {} workers...", n, lace_ws::worker_count());
+
+    let t = Instant::now();
     let result = fib_run(n);
-    println!("fib({}) = {}", n, result);
+    let elapsed = t.elapsed();
+
+    println!("Result: fib({}) = {}", n, result);
+    println!("Time: {:.6}s", elapsed.as_secs_f64());
+
     lace_ws::stop();
 }

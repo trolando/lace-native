@@ -27,6 +27,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lace-example-nqueens"
+version = "0.1.0"
+dependencies = [
+ "lace-ws",
+ "lace-ws-build",
+]
+
+[[package]]
 name = "lace-ws"
 version = "0.1.0"
 dependencies = [
