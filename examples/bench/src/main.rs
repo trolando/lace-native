@@ -3,7 +3,9 @@ use std::time::Instant;
 include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
 
 fn fib(w: &Worker, n: i32) -> i32 {
-    if n < 2 { return n; }
+    if n < 2 {
+        return n;
+    }
     let guard = fib_spawn(w, n - 1);
     let a = fib(w, n - 2);
     let b = guard.sync(w);
@@ -21,9 +23,13 @@ fn nqueens(w: &Worker, a: *const i32, n: i32, d: i32, i: i32) -> i64 {
             return 0;
         }
     }
-    if d >= 0 { aa.push(i); }
+    if d >= 0 {
+        aa.push(i);
+    }
     let d = d + 1;
-    if d == n { return 1; }
+    if d == n {
+        return 1;
+    }
     for k in 0..n {
         let _ = nqueens_spawn(w, aa.as_ptr(), n, d, k);
     }
@@ -35,13 +41,17 @@ fn nqueens(w: &Worker, a: *const i32, n: i32, d: i32, i: i32) -> i64 {
 }
 
 /// Run a benchmark, return elapsed seconds.
-fn bench<F: FnOnce() -> T, T: std::fmt::Display + std::fmt::Debug>(name: &str, expected: T, f: F) -> f64
-where T: PartialEq + Copy,
+fn bench<F, T>(name: &str, expected: T, f: F) -> f64
+where
+    F: FnOnce() -> T,
+    T: PartialEq + std::fmt::Debug,
 {
     let t = Instant::now();
     let result = f();
     let elapsed = t.elapsed().as_secs_f64();
+
     assert_eq!(result, expected, "{} returned wrong result", name);
+
     elapsed
 }
 
@@ -51,12 +61,18 @@ fn main() {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-w" => { i += 1; max_workers = args[i].parse().expect("-w requires a number"); }
+            "-w" => {
+                i += 1;
+                max_workers = args[i].parse().expect("-w requires a number");
+            }
             "-h" | "--help" => {
                 eprintln!("Usage: {} [-w <max_workers>]", args[0]);
                 return;
             }
-            _ => { eprintln!("Unknown option: {}", args[i]); return; }
+            _ => {
+                eprintln!("Unknown option: {}", args[i]);
+                return;
+            }
         }
         i += 1;
     }
@@ -90,10 +106,14 @@ fn main() {
     worker_counts.dedup();
 
     // Header
-    println!("{:>8}  {:>12}  {:>8}  {:>12}  {:>8}",
-        "workers", "fib(42)", "speedup", "nqueens(13)", "speedup");
-    println!("{:>8}  {:>12}  {:>8}  {:>12}  {:>8}",
-        "-------", "----------", "-------", "-----------", "-------");
+    println!(
+        "{:>8}  {:>12}  {:>8}  {:>12}  {:>8}",
+        "workers", "fib(42)", "speedup", "nqueens(13)", "speedup"
+    );
+    println!(
+        "{:>8}  {:>12}  {:>8}  {:>12}  {:>8}",
+        "-------", "----------", "-------", "-----------", "-------"
+    );
 
     let mut fib_base = 0.0f64;
     let mut nq_base = 0.0f64;
@@ -111,11 +131,21 @@ fn main() {
             nq_base = nq_time;
         }
 
-        let fib_sp = if fib_base > 0.0 { fib_base / fib_time } else { 1.0 };
-        let nq_sp = if nq_base > 0.0 { nq_base / nq_time } else { 1.0 };
+        let fib_sp = if fib_base > 0.0 {
+            fib_base / fib_time
+        } else {
+            1.0
+        };
+        let nq_sp = if nq_base > 0.0 {
+            nq_base / nq_time
+        } else {
+            1.0
+        };
 
-        println!("{:>8}  {:>10.4}s  {:>7.2}x  {:>10.4}s  {:>7.2}x",
-            nw, fib_time, fib_sp, nq_time, nq_sp);
+        println!(
+            "{:>8}  {:>10.4}s  {:>7.2}x  {:>10.4}s  {:>7.2}x",
+            nw, fib_time, fib_sp, nq_time, nq_sp
+        );
 
         lace_native::stop();
     }

@@ -46,7 +46,10 @@ fn main() {
     };
 
     println!("cargo:rerun-if-changed={}", lace_src.display());
-    println!("cargo:rerun-if-changed={}", manifest_dir.join("csrc").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("csrc").display()
+    );
 
     // Read feature flags
     let backoff = if has_feature("backoff") { "1" } else { "0" };
@@ -68,8 +71,7 @@ fn main() {
          #define LACE_USE_HWLOC {hwloc}\n\
          #define HAVE_SCHED_GETAFFINITY {has_sched}\n"
     );
-    fs::write(out_dir.join("lace_config.h"), &config)
-        .expect("Failed to write lace_config.h");
+    fs::write(out_dir.join("lace_config.h"), &config).expect("Failed to write lace_config.h");
 
     // Export include paths for lace-native-build (via links = "lace" -> DEP_LACE_*).
     println!("cargo:include={}", lace_src.display());

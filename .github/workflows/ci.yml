@@ -10,6 +10,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ── Lint ──────────────────────────────────────────
+  lint:
+    name: 'Lint'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Clippy
+      run: cargo clippy --all-targets -- -D warnings
+
   # ── Linux ─────────────────────────────────────────
   linux:
     name: 'Linux ${{ matrix.name }}'

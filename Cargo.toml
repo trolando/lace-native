@@ -6,5 +6,6 @@ members = [
     "examples/fib",
     "examples/nqueens",
     "examples/bench",
+    "benchmarks/rayon-compare",
     "tests/integration",
 ]

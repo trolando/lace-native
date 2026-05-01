@@ -69,16 +69,31 @@ fn main() {
 
     while i < args.len() {
         match args[i].as_str() {
-            "-w" => { i += 1; workers = args[i].parse().expect("-w requires a number"); }
-            "-q" => { i += 1; dqsize = args[i].parse().expect("-q requires a number"); }
-            "-h" | "--help" => { usage(&args[0]); return; }
-            _ => { n = args[i].parse().expect("expected a number for n"); }
+            "-w" => {
+                i += 1;
+                workers = args[i].parse().expect("-w requires a number");
+            }
+            "-q" => {
+                i += 1;
+                dqsize = args[i].parse().expect("-q requires a number");
+            }
+            "-h" | "--help" => {
+                usage(&args[0]);
+                return;
+            }
+            _ => {
+                n = args[i].parse().expect("expected a number for n");
+            }
         }
         i += 1;
     }
 
     lace_native::start(workers, dqsize, 0);
-    println!("Running nqueens n={} with {} workers...", n, lace_native::worker_count());
+    println!(
+        "Running nqueens n={} with {} workers...",
+        n,
+        lace_native::worker_count()
+    );
 
     let t = Instant::now();
     let result = nqueens_run(std::ptr::null(), n, -1, 0);

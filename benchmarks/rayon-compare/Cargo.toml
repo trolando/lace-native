@@ -1,0 +1,12 @@
+[package]
+name = "rayon-compare"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lace-native = { path = "../../lace-native" }
+rayon = "1"
+
+[build-dependencies]
+lace-native-build = { path = "../../lace-native-build" }

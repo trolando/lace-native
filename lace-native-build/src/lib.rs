@@ -138,20 +138,33 @@ impl Builder {
         fs::write(&rust_path, &rust_code).expect("Failed to write lace_tasks.rs");
 
         // Find lace.h: DEP_LACE_INCLUDE (from lace-native) > LACE_DIR > .lace_dir()
-        let lace_include = env::var("DEP_LACE_INCLUDE").map(PathBuf::from)
+        let lace_include = env::var("DEP_LACE_INCLUDE")
+            .map(PathBuf::from)
             .ok()
-            .or_else(|| self.lace_dir.as_ref().map(|d| {
-                if d.join("src").join("lace.h").exists() { d.join("src") } else { d.clone() }
-            }))
-            .or_else(|| env::var("LACE_DIR").ok().map(|d| {
-                let d = PathBuf::from(d);
-                if d.join("src").join("lace.h").exists() { d.join("src") } else { d }
-            }))
+            .or_else(|| {
+                self.lace_dir.as_ref().map(|d| {
+                    if d.join("src").join("lace.h").exists() {
+                        d.join("src")
+                    } else {
+                        d.clone()
+                    }
+                })
+            })
+            .or_else(|| {
+                env::var("LACE_DIR").ok().map(|d| {
+                    let d = PathBuf::from(d);
+                    if d.join("src").join("lace.h").exists() {
+                        d.join("src")
+                    } else {
+                        d
+                    }
+                })
+            })
             .expect(
                 "Cannot find lace.h. Either:\n\
                  - depend on lace-native (recommended, provides headers automatically), or\n\
                  - set LACE_DIR, or\n\
-                 - use .lace_dir() in your build.rs"
+                 - use .lace_dir() in your build.rs",
             );
 
         // Find lace_config.h: must come from lace-native via DEP_LACE_CONFIG_INCLUDE.
@@ -163,7 +176,7 @@ impl Builder {
                 "DEP_LACE_CONFIG_INCLUDE not set. This means lace-native is not a \n\
                  dependency of your crate. Add lace-native to [dependencies] so that \n\
                  the Lace configuration (features, task layout) is consistent \n\
-                 between the runtime and the generated task wrappers."
+                 between the runtime and the generated task wrappers.",
             );
 
         let mut build = cc::Build::new();
@@ -209,10 +222,16 @@ fn configure_c_compiler(build: &mut cc::Build) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone)]
-struct Param { name: String, rust_type: String }
+struct Param {
+    name: String,
+    rust_type: String,
+}
 
 #[derive(Debug, Clone)]
-enum SelfKind { Ref, MutRef }
+enum SelfKind {
+    Ref,
+    MutRef,
+}
 
 #[derive(Debug, Clone)]
 struct TaskDef {
@@ -235,7 +254,13 @@ struct DefFile {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
-enum State { TopLevel, InCBlock, InRustBlock, InTypesBlock, InImplBlock(String) }
+enum State {
+    TopLevel,
+    InCBlock,
+    InRustBlock,
+    InTypesBlock,
+    InImplBlock(String),
+}
 
 /// Report a parse error in tasks.def with location and context.
 fn def_error(line_no: usize, line: &str, msg: &str) -> ! {
@@ -245,70 +270,96 @@ fn def_error(line_no: usize, line: &str, msg: &str) -> ! {
          |\n\
          |  {}\n\
          |\n",
-        line_no + 1, msg, line
+        line_no + 1,
+        msg,
+        line
     )
 }
 
 fn parse_def_file(content: &str) -> DefFile {
     let mut state = State::TopLevel;
     let mut def = DefFile {
-        c_preamble: String::new(), rust_preamble: String::new(),
-        type_map: Vec::new(), tasks: Vec::new(),
+        c_preamble: String::new(),
+        rust_preamble: String::new(),
+        type_map: Vec::new(),
+        tasks: Vec::new(),
     };
     for (ln, raw) in content.lines().enumerate() {
         let line = raw.trim();
         match &state {
-            State::TopLevel | State::InTypesBlock | State::InImplBlock(_) => {
-                if line.is_empty() || line.starts_with('#') { continue; }
+            State::TopLevel | State::InTypesBlock | State::InImplBlock(_)
+                if line.is_empty() || line.starts_with('#') =>
+            {
+                continue
             }
             // Inside c { } and rust { } blocks, preserve ALL lines including #include
             _ => {}
         }
         match &state {
             State::TopLevel => {
-                if line == "c {" { state = State::InCBlock; }
-                else if line == "rust {" { state = State::InRustBlock; }
-                else if line == "types {" { state = State::InTypesBlock; }
-                else if line.starts_with("impl ") && line.ends_with('{') {
-                    let tn = line.strip_prefix("impl ").unwrap()
-                        .strip_suffix('{').unwrap().trim().to_string();
+                if line == "c {" {
+                    state = State::InCBlock;
+                } else if line == "rust {" {
+                    state = State::InRustBlock;
+                } else if line == "types {" {
+                    state = State::InTypesBlock;
+                } else if line.starts_with("impl ") && line.ends_with('{') {
+                    let tn = line
+                        .strip_prefix("impl ")
+                        .unwrap()
+                        .strip_suffix('{')
+                        .unwrap()
+                        .trim()
+                        .to_string();
                     state = State::InImplBlock(tn);
-                }
-                else if line.starts_with("task ") {
+                } else if line.starts_with("task ") {
                     def.tasks.push(parse_task_line(line, None, ln));
-                }
-                else {
-                    def_error(ln, line,
-                        "unexpected line (expected 'task', 'impl', 'c {', 'rust {', or 'types {')");
+                } else {
+                    def_error(
+                        ln,
+                        line,
+                        "unexpected line (expected 'task', 'impl', 'c {', 'rust {', or 'types {')",
+                    );
                 }
             }
             State::InCBlock => {
-                if line == "}" { state = State::TopLevel; }
-                else { def.c_preamble.push_str(raw); def.c_preamble.push('\n'); }
+                if line == "}" {
+                    state = State::TopLevel;
+                } else {
+                    def.c_preamble.push_str(raw);
+                    def.c_preamble.push('\n');
+                }
             }
             State::InRustBlock => {
-                if line == "}" { state = State::TopLevel; }
-                else { def.rust_preamble.push_str(raw); def.rust_preamble.push('\n'); }
+                if line == "}" {
+                    state = State::TopLevel;
+                } else {
+                    def.rust_preamble.push_str(raw);
+                    def.rust_preamble.push('\n');
+                }
             }
             State::InTypesBlock => {
-                if line == "}" { state = State::TopLevel; }
-                else {
+                if line == "}" {
+                    state = State::TopLevel;
+                } else {
                     let p: Vec<&str> = line.splitn(2, '=').collect();
                     if p.len() != 2 {
-                        def_error(ln, line,
-                            "invalid type mapping (expected 'RustType = CType')");
+                        def_error(
+                            ln,
+                            line,
+                            "invalid type mapping (expected 'RustType = CType')",
+                        );
                     }
                     def.type_map.push((p[0].trim().into(), p[1].trim().into()));
                 }
             }
             State::InImplBlock(tn) => {
-                if line == "}" { state = State::TopLevel; }
-                else if line.starts_with("task ") {
+                if line == "}" {
+                    state = State::TopLevel;
+                } else if line.starts_with("task ") {
                     def.tasks.push(parse_task_line(line, Some(tn.clone()), ln));
-                }
-                else {
-                    def_error(ln, line,
-                        "expected 'task' declaration inside impl block");
+                } else {
+                    def_error(ln, line, "expected 'task' declaration inside impl block");
                 }
             }
         }
@@ -327,48 +378,86 @@ fn parse_def_file(content: &str) -> DefFile {
 fn parse_task_line(line: &str, impl_type: Option<String>, ln: usize) -> TaskDef {
     let rest = line.strip_prefix("task ").unwrap().trim();
     let (sig, ret_type) = if let Some(i) = rest.find("->") {
-        (rest[..i].trim(), Some(rest[i+2..].trim().to_string()))
-    } else { (rest, None) };
-    let open = sig.find('(')
-        .unwrap_or_else(|| def_error(ln, line,
-            "missing '(' — expected: task name(param: Type, ...) -> RetType"));
-    let close = sig.rfind(')')
-        .unwrap_or_else(|| def_error(ln, line,
-            "missing ')' — expected: task name(param: Type, ...) -> RetType"));
+        (rest[..i].trim(), Some(rest[i + 2..].trim().to_string()))
+    } else {
+        (rest, None)
+    };
+    let open = sig.find('(').unwrap_or_else(|| {
+        def_error(
+            ln,
+            line,
+            "missing '(' — expected: task name(param: Type, ...) -> RetType",
+        )
+    });
+    let close = sig.rfind(')').unwrap_or_else(|| {
+        def_error(
+            ln,
+            line,
+            "missing ')' — expected: task name(param: Type, ...) -> RetType",
+        )
+    });
     let name = sig[..open].trim().to_string();
-    let pstr = sig[open+1..close].trim();
+    let pstr = sig[open + 1..close].trim();
     let mut params = Vec::new();
     let mut self_kind = None;
     if !pstr.is_empty() {
         for ps in split_params(pstr) {
             let ps = ps.trim();
-            if ps == "&self" { self_kind = Some(SelfKind::Ref); }
-            else if ps == "&mut self" { self_kind = Some(SelfKind::MutRef); }
-            else {
-                let c = ps.find(':')
-                    .unwrap_or_else(|| def_error(ln, line,
-                        &format!("missing ':' in parameter '{}' — expected: name: Type", ps)));
-                params.push(Param { name: ps[..c].trim().into(), rust_type: ps[c+1..].trim().into() });
+            if ps == "&self" {
+                self_kind = Some(SelfKind::Ref);
+            } else if ps == "&mut self" {
+                self_kind = Some(SelfKind::MutRef);
+            } else {
+                let c = ps.find(':').unwrap_or_else(|| {
+                    def_error(
+                        ln,
+                        line,
+                        &format!("missing ':' in parameter '{}' — expected: name: Type", ps),
+                    )
+                });
+                params.push(Param {
+                    name: ps[..c].trim().into(),
+                    rust_type: ps[c + 1..].trim().into(),
+                });
             }
         }
     }
     if self_kind.is_some() && impl_type.is_none() {
         def_error(ln, line, "&self can only be used inside an impl block");
     }
-    TaskDef { name, params, ret_type, impl_type, self_kind }
+    TaskDef {
+        name,
+        params,
+        ret_type,
+        impl_type,
+        self_kind,
+    }
 }
 
 fn split_params(s: &str) -> Vec<String> {
-    let mut r = Vec::new(); let mut cur = String::new(); let mut d = 0i32;
+    let mut r = Vec::new();
+    let mut cur = String::new();
+    let mut d = 0i32;
     for ch in s.chars() {
         match ch {
-            '<' | '(' => { d += 1; cur.push(ch); }
-            '>' | ')' => { d -= 1; cur.push(ch); }
-            ',' if d == 0 => { r.push(cur.clone()); cur.clear(); }
+            '<' | '(' => {
+                d += 1;
+                cur.push(ch);
+            }
+            '>' | ')' => {
+                d -= 1;
+                cur.push(ch);
+            }
+            ',' if d == 0 => {
+                r.push(cur.clone());
+                cur.clear();
+            }
             _ => cur.push(ch),
         }
     }
-    if !cur.trim().is_empty() { r.push(cur); }
+    if !cur.trim().is_empty() {
+        r.push(cur);
+    }
     r
 }
 
@@ -377,13 +466,17 @@ fn split_params(s: &str) -> Vec<String> {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 fn rust_type_to_c(rt: &str, m: &[(String, String)]) -> String {
-    for (a, b) in m { if rt == a { return b.clone(); } }
+    for (a, b) in m {
+        if rt == a {
+            return b.clone();
+        }
+    }
     match rt {
         "i8"=>"int8_t","i16"=>"int16_t","i32"=>"int32_t","i64"=>"int64_t",
         "u8"=>"uint8_t","u16"=>"uint16_t","u32"=>"uint32_t","u64"=>"uint64_t",
         "usize"=>"size_t","isize"=>"ptrdiff_t","bool"=>"_Bool",
         "f32"=>"float","f64"=>"double",
-        _ if rt.starts_with("*mut ") || rt.starts_with("*const ") => "void*".into(),
+        _ if rt.starts_with("*mut ") || rt.starts_with("*const ") => "void*",
         _ => panic!(
             "\nerror: unknown Rust type '{}' in tasks.def.\n\
              Add a mapping in the types {{ }} block, e.g.:\n\n  types {{\n      {} = <c_type>\n  }}\n\n\
@@ -394,23 +487,52 @@ fn rust_type_to_c(rt: &str, m: &[(String, String)]) -> String {
     }.into()
 }
 
-fn is_ref(t: &str) -> bool { t.starts_with('&') }
-fn is_mut_ref(t: &str) -> bool { t.starts_with("&mut ") }
+fn is_ref(t: &str) -> bool {
+    t.starts_with('&')
+}
+fn is_mut_ref(t: &str) -> bool {
+    t.starts_with("&mut ")
+}
 fn ref_inner(t: &str) -> &str {
-    if t.starts_with("&mut ") { t.strip_prefix("&mut ").unwrap().trim() }
-    else { t.strip_prefix('&').unwrap().trim() }
+    if t.starts_with("&mut ") {
+        t.strip_prefix("&mut ").unwrap().trim()
+    } else {
+        t.strip_prefix('&').unwrap().trim()
+    }
 }
 fn to_pascal(s: &str) -> String {
-    s.split('_').map(|w| {
-        let mut c = w.chars();
-        match c.next() { None => String::new(), Some(f) => f.to_uppercase().chain(c).collect() }
-    }).collect()
+    s.split('_')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().chain(c).collect(),
+            }
+        })
+        .collect()
 }
 fn c_prefix(t: &TaskDef) -> String {
-    match &t.impl_type { Some(tp) => format!("{}_{}", tp, t.name), None => t.name.clone() }
+    match &t.impl_type {
+        Some(tp) => format!("{}_{}", tp, t.name),
+        None => t.name.clone(),
+    }
 }
 fn has_lifetime(t: &TaskDef) -> bool {
     t.params.iter().any(|p| is_ref(&p.rust_type))
+}
+
+fn is_raw_ptr(t: &str) -> bool {
+    t.starts_with("*const ") || t.starts_with("*mut ")
+}
+
+fn has_raw_ptr_param(task: &TaskDef) -> bool {
+    task.params.iter().any(|p| is_raw_ptr(&p.rust_type))
+}
+
+fn allow_raw_ptr_lint_if_needed(o: &mut String, task: &TaskDef, indent: &str) {
+    if has_raw_ptr_param(task) {
+        writeln!(o, "{}#[allow(clippy::not_unsafe_ptr_arg_deref)]", indent).unwrap();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -420,22 +542,39 @@ fn has_lifetime(t: &TaskDef) -> bool {
 fn generate_c(def: &DefFile) -> String {
     let mut o = String::new();
     writeln!(o, "// AUTO-GENERATED by lace-native-build — do not edit\n").unwrap();
-    writeln!(o, "#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n").unwrap();
-    if !def.c_preamble.is_empty() { o.push_str(&def.c_preamble); writeln!(o).unwrap(); }
+    writeln!(
+        o,
+        "#include <stdint.h>\n#include <stddef.h>\n#include <stdbool.h>\n"
+    )
+    .unwrap();
+    if !def.c_preamble.is_empty() {
+        o.push_str(&def.c_preamble);
+        writeln!(o).unwrap();
+    }
 
     for task in &def.tasks {
         let pf = c_prefix(task);
-        let cr = task.ret_type.as_ref()
-            .map(|t| rust_type_to_c(t, &def.type_map)).unwrap_or("void".into());
+        let cr = task
+            .ret_type
+            .as_ref()
+            .map(|t| rust_type_to_c(t, &def.type_map))
+            .unwrap_or("void".into());
         let has_ret = task.ret_type.is_some();
 
         // TASK macro args
         let mut targs = vec![cr.clone(), pf.clone()];
-        if task.self_kind.is_some() { targs.push("void*".into()); targs.push("self_".into()); }
+        if task.self_kind.is_some() {
+            targs.push("void*".into());
+            targs.push("self_".into());
+        }
         for p in &task.params {
-            let ct = if is_ref(&p.rust_type) { "void*".into() }
-                     else { rust_type_to_c(&p.rust_type, &def.type_map) };
-            targs.push(ct); targs.push(p.name.clone());
+            let ct = if is_ref(&p.rust_type) {
+                "void*".into()
+            } else {
+                rust_type_to_c(&p.rust_type, &def.type_map)
+            };
+            targs.push(ct);
+            targs.push(p.name.clone());
         }
 
         // Worker-param lists (for SPAWN, SYNC, DROP)
@@ -445,34 +584,53 @@ fn generate_c(def: &DefFile) -> String {
         let mut args: Vec<String> = Vec::new();
 
         if task.self_kind.is_some() {
-            pw.push("void *self_".into()); pnw.push("void *self_".into());
+            pw.push("void *self_".into());
+            pnw.push("void *self_".into());
             args.push("self_".into());
         }
         for p in &task.params {
-            let ct = if is_ref(&p.rust_type) { "void*".into() }
-                     else { rust_type_to_c(&p.rust_type, &def.type_map) };
+            let ct = if is_ref(&p.rust_type) {
+                "void*".into()
+            } else {
+                rust_type_to_c(&p.rust_type, &def.type_map)
+            };
             pw.push(format!("{} {}", ct, p.name));
             pnw.push(format!("{} {}", ct, p.name));
             args.push(p.name.clone());
         }
 
         let s_pw = pw.join(", ");
-        let s_pnw = if pnw.is_empty() { "void".to_string() } else { pnw.join(", ") };
+        let s_pnw = if pnw.is_empty() {
+            "void".to_string()
+        } else {
+            pnw.join(", ")
+        };
         let s_args = args.join(", ");
-        let s_wargs = if args.is_empty() { "w".into() } else { format!("w, {}", s_args) };
+        let s_wargs = if args.is_empty() {
+            "w".into()
+        } else {
+            format!("w, {}", s_args)
+        };
         let ret = if has_ret { "return " } else { "" };
 
         writeln!(o, "// ── {} ──\n", pf).unwrap();
         writeln!(o, "extern {} {}_CALL({});\n", cr, pf, s_pw).unwrap();
 
         let np = task.params.len() + if task.self_kind.is_some() { 1 } else { 0 };
-        if np == 0 { writeln!(o, "TASK({}, {});\n", cr, pf).unwrap(); }
-        else { writeln!(o, "TASK({});\n", targs.join(", ")).unwrap(); }
+        if np == 0 {
+            writeln!(o, "TASK({}, {});\n", cr, pf).unwrap();
+        } else {
+            writeln!(o, "TASK({});\n", targs.join(", ")).unwrap();
+        }
 
         // SPAWN, SYNC, DROP — take lace_worker*
         writeln!(o, "void {pf}_SPAWN_w({s_pw}) {{ {pf}_SPAWN({s_wargs}); }}").unwrap();
         if has_ret {
-            writeln!(o, "{cr} {pf}_SYNC_w(lace_worker *w) {{ return {pf}_SYNC(w); }}").unwrap();
+            writeln!(
+                o,
+                "{cr} {pf}_SYNC_w(lace_worker *w) {{ return {pf}_SYNC(w); }}"
+            )
+            .unwrap();
         } else {
             writeln!(o, "void {pf}_SYNC_w(lace_worker *w) {{ {pf}_SYNC(w); }}").unwrap();
         }
@@ -481,11 +639,23 @@ fn generate_c(def: &DefFile) -> String {
         // NAME (auto-dispatch), NEWFRAME, TOGETHER — NO worker param
         writeln!(o, "{cr} {pf}_RUN_w({s_pnw}) {{ {ret}{pf}({s_args}); }}").unwrap();
         if has_ret {
-            writeln!(o, "{cr} {pf}_NEWFRAME_w({s_pnw}) {{ return {pf}_NEWFRAME({s_args}); }}").unwrap();
+            writeln!(
+                o,
+                "{cr} {pf}_NEWFRAME_w({s_pnw}) {{ return {pf}_NEWFRAME({s_args}); }}"
+            )
+            .unwrap();
         } else {
-            writeln!(o, "void {pf}_NEWFRAME_w({s_pnw}) {{ {pf}_NEWFRAME({s_args}); }}").unwrap();
+            writeln!(
+                o,
+                "void {pf}_NEWFRAME_w({s_pnw}) {{ {pf}_NEWFRAME({s_args}); }}"
+            )
+            .unwrap();
         }
-        writeln!(o, "void {pf}_TOGETHER_w({s_pnw}) {{ {pf}_TOGETHER({s_args}); }}").unwrap();
+        writeln!(
+            o,
+            "void {pf}_TOGETHER_w({s_pnw}) {{ {pf}_TOGETHER({s_args}); }}"
+        )
+        .unwrap();
         writeln!(o).unwrap();
     }
     o
@@ -506,7 +676,10 @@ fn generate_rust(def: &DefFile) -> String {
     writeln!(o, "use lace_native::{{Worker, LaceWorker}};").unwrap();
     writeln!(o).unwrap();
 
-    if !def.rust_preamble.is_empty() { o.push_str(&def.rust_preamble); writeln!(o).unwrap(); }
+    if !def.rust_preamble.is_empty() {
+        o.push_str(&def.rust_preamble);
+        writeln!(o).unwrap();
+    }
 
     // Free function tasks
     for task in def.tasks.iter().filter(|t| t.impl_type.is_none()) {
@@ -514,16 +687,23 @@ fn generate_rust(def: &DefFile) -> String {
     }
 
     // Method tasks grouped by impl type
-    let mut groups: std::collections::BTreeMap<String, Vec<&TaskDef>> = std::collections::BTreeMap::new();
+    let mut groups: std::collections::BTreeMap<String, Vec<&TaskDef>> =
+        std::collections::BTreeMap::new();
     for task in &def.tasks {
-        if let Some(ref it) = task.impl_type { groups.entry(it.clone()).or_default().push(task); }
+        if let Some(ref it) = task.impl_type {
+            groups.entry(it.clone()).or_default().push(task);
+        }
     }
     for (tn, tasks) in &groups {
         writeln!(o, "// ── Methods on {} ──\n", tn).unwrap();
         writeln!(o, "impl {} {{", tn).unwrap();
-        for task in tasks { gen_rust_method_in_impl(&mut o, task); }
+        for task in tasks {
+            gen_rust_method_in_impl(&mut o, task);
+        }
         writeln!(o, "}}\n").unwrap();
-        for task in tasks { gen_rust_method_outside(&mut o, task); }
+        for task in tasks {
+            gen_rust_method_outside(&mut o, task);
+        }
     }
     o
 }
@@ -545,14 +725,22 @@ fn gen_ffi(o: &mut String, task: &TaskDef) {
         fnw.push("self_: *mut c_void".into());
     }
     for p in &task.params {
-        let ft = if is_ref(&p.rust_type) { "*mut c_void".into() } else { p.rust_type.clone() };
+        let ft = if is_ref(&p.rust_type) {
+            "*mut c_void".into()
+        } else {
+            p.rust_type.clone()
+        };
         fw.push(format!("{}: {}", p.name, ft));
         fnw.push(format!("{}: {}", p.name, ft));
     }
 
     let sw = fw.join(", ");
     let snw = fnw.join(", ");
-    let ret = if has_ret { format!(" -> {}", rr) } else { String::new() };
+    let ret = if has_ret {
+        format!(" -> {}", rr)
+    } else {
+        String::new()
+    };
 
     writeln!(o, "extern \"C\" {{").unwrap();
     writeln!(o, "    fn {}_SPAWN_w({});", pf, sw).unwrap();
@@ -576,36 +764,63 @@ fn gen_trampoline(o: &mut String, task: &TaskDef) {
     let mut params = vec!["w: *mut LaceWorker".to_string()];
     if is_method {
         let it = task.impl_type.as_deref().unwrap();
-        params.push(if is_mut_s { format!("self_: *mut {}", it) }
-                     else { format!("self_: *const {}", it) });
+        params.push(if is_mut_s {
+            format!("self_: *mut {}", it)
+        } else {
+            format!("self_: *const {}", it)
+        });
     }
     for p in &task.params {
-        if is_mut_ref(&p.rust_type) { params.push(format!("{}: *mut {}", p.name, ref_inner(&p.rust_type))); }
-        else if is_ref(&p.rust_type) { params.push(format!("{}: *const {}", p.name, ref_inner(&p.rust_type))); }
-        else { params.push(format!("{}: {}", p.name, p.rust_type)); }
+        if is_mut_ref(&p.rust_type) {
+            params.push(format!("{}: *mut {}", p.name, ref_inner(&p.rust_type)));
+        } else if is_ref(&p.rust_type) {
+            params.push(format!("{}: *const {}", p.name, ref_inner(&p.rust_type)));
+        } else {
+            params.push(format!("{}: {}", p.name, p.rust_type));
+        }
     }
 
-    let ret_arr = if has_ret { format!(" -> {}", rr) } else { String::new() };
+    let ret_arr = if has_ret {
+        format!(" -> {}", rr)
+    } else {
+        String::new()
+    };
 
     writeln!(o, "#[allow(non_snake_case)]").unwrap();
     writeln!(o, "#[no_mangle]").unwrap();
-    writeln!(o, "extern \"C\" fn {}_CALL({}){} {{", pf, params.join(", "), ret_arr).unwrap();
+    writeln!(
+        o,
+        "extern \"C\" fn {}_CALL({}){} {{",
+        pf,
+        params.join(", "),
+        ret_arr
+    )
+    .unwrap();
     writeln!(o, "    let w = unsafe {{ Worker::from_raw(w) }};").unwrap();
 
     if is_method {
-        if is_mut_s { writeln!(o, "    let this = unsafe {{ &mut *self_ }};").unwrap(); }
-        else { writeln!(o, "    let this = unsafe {{ &*self_ }};").unwrap(); }
+        if is_mut_s {
+            writeln!(o, "    let this = unsafe {{ &mut *self_ }};").unwrap();
+        } else {
+            writeln!(o, "    let this = unsafe {{ &*self_ }};").unwrap();
+        }
     }
 
     let mut call_args = vec!["&w".to_string()];
     for p in &task.params {
-        if is_mut_ref(&p.rust_type) { writeln!(o, "    let {} = unsafe {{ &mut *{} }};", p.name, p.name).unwrap(); }
-        else if is_ref(&p.rust_type) { writeln!(o, "    let {} = unsafe {{ &*{} }};", p.name, p.name).unwrap(); }
+        if is_mut_ref(&p.rust_type) {
+            writeln!(o, "    let {} = unsafe {{ &mut *{} }};", p.name, p.name).unwrap();
+        } else if is_ref(&p.rust_type) {
+            writeln!(o, "    let {} = unsafe {{ &*{} }};", p.name, p.name).unwrap();
+        }
         call_args.push(p.name.clone());
     }
 
-    if is_method { writeln!(o, "    this.{}({})", task.name, call_args.join(", ")).unwrap(); }
-    else { writeln!(o, "    crate::{}({})", task.name, call_args.join(", ")).unwrap(); }
+    if is_method {
+        writeln!(o, "    this.{}({})", task.name, call_args.join(", ")).unwrap();
+    } else {
+        writeln!(o, "    crate::{}({})", task.name, call_args.join(", ")).unwrap();
+    }
     writeln!(o, "}}\n").unwrap();
 }
 
@@ -619,64 +834,116 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
     let pf = c_prefix(task);
 
     writeln!(o, "#[allow(dead_code)]").unwrap();
-    if has_lt { writeln!(o, "pub struct {}<'__lace> {{", gn).unwrap(); }
-    else { writeln!(o, "pub struct {} {{", gn).unwrap(); }
+    if has_lt {
+        writeln!(o, "pub struct {}<'__lace> {{", gn).unwrap();
+    } else {
+        writeln!(o, "pub struct {} {{", gn).unwrap();
+    }
 
     if is_method {
         let it = task.impl_type.as_deref().unwrap();
-        if is_mut_s { writeln!(o, "    _self: &'__lace mut {},", it).unwrap(); }
-        else { writeln!(o, "    _self: &'__lace {},", it).unwrap(); }
+        if is_mut_s {
+            writeln!(o, "    _self: &'__lace mut {},", it).unwrap();
+        } else {
+            writeln!(o, "    _self: &'__lace {},", it).unwrap();
+        }
     }
     let mut has_borrow_fields = false;
     for p in &task.params {
         if is_ref(&p.rust_type) {
             let inner = ref_inner(&p.rust_type);
-            if is_mut_ref(&p.rust_type) { writeln!(o, "    _{}: &'__lace mut {},", p.name, inner).unwrap(); }
-            else { writeln!(o, "    _{}: &'__lace {},", p.name, inner).unwrap(); }
+            if is_mut_ref(&p.rust_type) {
+                writeln!(o, "    _{}: &'__lace mut {},", p.name, inner).unwrap();
+            } else {
+                writeln!(o, "    _{}: &'__lace {},", p.name, inner).unwrap();
+            }
             has_borrow_fields = true;
         }
     }
     if !is_method && !has_borrow_fields {
-        if has_lt { writeln!(o, "    _p: PhantomData<&'__lace ()>,").unwrap(); }
-        else { writeln!(o, "    _p: (),").unwrap(); }
+        if has_lt {
+            writeln!(o, "    _p: PhantomData<&'__lace ()>,").unwrap();
+        } else {
+            writeln!(o, "    _p: (),").unwrap();
+        }
     }
     writeln!(o, "}}\n").unwrap();
 
     // Impl sync/drop on guard
-    if has_lt { writeln!(o, "impl<'__lace> {}<'__lace> {{", gn).unwrap(); }
-    else { writeln!(o, "impl {} {{", gn).unwrap(); }
-    if has_ret {
-        writeln!(o, "    pub fn sync(self, w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}", rr, pf).unwrap();
+    if has_lt {
+        writeln!(o, "impl<'__lace> {}<'__lace> {{", gn).unwrap();
     } else {
-        writeln!(o, "    pub fn sync(self, w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}", pf).unwrap();
+        writeln!(o, "impl {} {{", gn).unwrap();
     }
-    writeln!(o, "    pub fn drop(self, w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}", pf).unwrap();
+    if has_ret {
+        writeln!(
+            o,
+            "    pub fn sync(self, w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}",
+            rr, pf
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            o,
+            "    pub fn sync(self, w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}",
+            pf
+        )
+        .unwrap();
+    }
+    writeln!(
+        o,
+        "    pub fn drop(self, w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}",
+        pf
+    )
+    .unwrap();
     writeln!(o, "}}\n").unwrap();
 }
 
 // ── Helpers for parameter formatting ──
 
 fn safe_params(task: &TaskDef) -> String {
-    task.params.iter().map(|p| format!("{}: {}", p.name, p.rust_type)).collect::<Vec<_>>().join(", ")
+    task.params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, p.rust_type))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn ffi_cast_args(task: &TaskDef) -> String {
-    task.params.iter().map(|p| {
-        if is_mut_ref(&p.rust_type) { format!("{} as *mut _ as *mut c_void", p.name) }
-        else if is_ref(&p.rust_type) { format!("{} as *const _ as *mut c_void", p.name) }
-        else { p.name.clone() }
-    }).collect::<Vec<_>>().join(", ")
+    task.params
+        .iter()
+        .map(|p| {
+            if is_mut_ref(&p.rust_type) {
+                format!("{} as *mut _ as *mut c_void", p.name)
+            } else if is_ref(&p.rust_type) {
+                format!("{} as *const _ as *mut c_void", p.name)
+            } else {
+                p.name.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn guard_fields(task: &TaskDef, is_method: bool) -> String {
     let mut f = Vec::new();
-    if is_method { f.push("_self: self".into()); }
+    if is_method {
+        f.push("_self: self".into());
+    }
     for p in &task.params {
-        if is_ref(&p.rust_type) { f.push(format!("_{}: {}", p.name, p.name)); }
+        if is_ref(&p.rust_type) {
+            f.push(format!("_{}: {}", p.name, p.name));
+        }
     }
     if f.is_empty() {
-        if has_lifetime(task) { "_p: PhantomData".into() } else { "_p: ()".into() }
-    } else { f.join(", ") }
+        if has_lifetime(task) {
+            "_p: PhantomData".into()
+        } else {
+            "_p: ()".into()
+        }
+    } else {
+        f.join(", ")
+    }
 }
 
 // ── Free function Rust generation ──
@@ -698,11 +965,22 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
     gen_guard(o, task, &gn, false);
 
     // spawn
+    allow_raw_ptr_lint_if_needed(o, task, "");
     writeln!(o, "#[must_use]").unwrap();
     if has_lt {
-        writeln!(o, "pub fn {}_spawn<'__lace>(w: &Worker, {}) -> {}<'__lace> {{", task.name, params, gn).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_spawn<'__lace>(w: &Worker, {}) -> {}<'__lace> {{",
+            task.name, params, gn
+        )
+        .unwrap();
     } else {
-        writeln!(o, "pub fn {}_spawn(w: &Worker, {}) -> {} {{", task.name, params, gn).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_spawn(w: &Worker, {}) -> {} {{",
+            task.name, params, gn
+        )
+        .unwrap();
     }
     writeln!(o, "    unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};", pf, args).unwrap();
     writeln!(o, "    {} {{ {} }}", gn, gf).unwrap();
@@ -710,30 +988,73 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
 
     // sync (standalone, C-style)
     if has_ret {
-        writeln!(o, "pub fn {}_sync(w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n", task.name, rr, pf).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_sync(w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n",
+            task.name, rr, pf
+        )
+        .unwrap();
     } else {
-        writeln!(o, "pub fn {}_sync(w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n", task.name, pf).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_sync(w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n",
+            task.name, pf
+        )
+        .unwrap();
     }
 
     // drop (standalone)
-    writeln!(o, "pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n", task.name, pf).unwrap();
+    writeln!(
+        o,
+        "pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n",
+        task.name, pf
+    )
+    .unwrap();
 
     // run (auto-dispatch, no worker — works from any thread)
+    allow_raw_ptr_lint_if_needed(o, task, "");
     if has_ret {
-        writeln!(o, "pub fn {}_run({}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, params, rr, pf, args).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_run({}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+            task.name, params, rr, pf, args
+        )
+        .unwrap();
     } else {
-        writeln!(o, "pub fn {}_run({}) {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, params, pf, args).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_run({}) {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+            task.name, params, pf, args
+        )
+        .unwrap();
     }
 
     // newframe (no worker)
+    allow_raw_ptr_lint_if_needed(o, task, "");
     if has_ret {
-        writeln!(o, "pub fn {}_newframe({}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, params, rr, pf, args).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_newframe({}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+            task.name, params, rr, pf, args
+        )
+        .unwrap();
     } else {
-        writeln!(o, "pub fn {}_newframe({}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, params, pf, args).unwrap();
+        writeln!(
+            o,
+            "pub fn {}_newframe({}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+            task.name, params, pf, args
+        )
+        .unwrap();
     }
 
     // together (no worker)
-    writeln!(o, "pub fn {}_together({}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n", task.name, params, pf, args).unwrap();
+    allow_raw_ptr_lint_if_needed(o, task, "");
+    writeln!(
+        o,
+        "pub fn {}_together({}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n",
+        task.name, params, pf, args
+    )
+    .unwrap();
 }
 
 // ── Method Rust generation (inside impl block) ──
@@ -745,71 +1066,162 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
     let gn = format!("{}Guard", to_pascal(&pf));
     let is_mut_s = matches!(task.self_kind, Some(SelfKind::MutRef));
     let sp = if is_mut_s { "&mut self" } else { "&self" };
-    let sc = if is_mut_s { "self as *mut _ as *mut c_void" }
-             else { "self as *const _ as *mut c_void" };
+    let sc = if is_mut_s {
+        "self as *mut _ as *mut c_void"
+    } else {
+        "self as *const _ as *mut c_void"
+    };
 
     let ep = safe_params(task);
     let ea = ffi_cast_args(task);
     let gf = guard_fields(task, true);
 
-    let all_a = if ea.is_empty() { sc.to_string() } else { format!("{}, {}", sc, ea) };
+    let all_a = if ea.is_empty() {
+        sc.to_string()
+    } else {
+        format!("{}, {}", sc, ea)
+    };
 
     // spawn
+    allow_raw_ptr_lint_if_needed(o, task, "    ");
     writeln!(o, "    #[must_use]").unwrap();
     if ep.is_empty() {
-        writeln!(o, "    pub fn {}_spawn({}, w: &Worker) -> {}<'_> {{", task.name, sp, gn).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_spawn({}, w: &Worker) -> {}<'_> {{",
+            task.name, sp, gn
+        )
+        .unwrap();
     } else {
-        writeln!(o, "    pub fn {}_spawn({}, w: &Worker, {}) -> {}<'_> {{", task.name, sp, ep, gn).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_spawn({}, w: &Worker, {}) -> {}<'_> {{",
+            task.name, sp, ep, gn
+        )
+        .unwrap();
     }
-    writeln!(o, "        unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};", pf, all_a).unwrap();
+    writeln!(
+        o,
+        "        unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};",
+        pf, all_a
+    )
+    .unwrap();
     writeln!(o, "        {} {{ {} }}", gn, gf).unwrap();
     writeln!(o, "    }}\n").unwrap();
 
     // sync (standalone)
     if has_ret {
-        writeln!(o, "    pub fn {}_sync(w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n", task.name, rr, pf).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_sync(w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n",
+            task.name, rr, pf
+        )
+        .unwrap();
     } else {
-        writeln!(o, "    pub fn {}_sync(w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n", task.name, pf).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_sync(w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}\n",
+            task.name, pf
+        )
+        .unwrap();
     }
 
     // drop (standalone)
-    writeln!(o, "    pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n", task.name, pf).unwrap();
+    writeln!(
+        o,
+        "    pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n",
+        task.name, pf
+    )
+    .unwrap();
 
     // run (no worker)
+    allow_raw_ptr_lint_if_needed(o, task, "    ");
     if ep.is_empty() {
         if has_ret {
-            writeln!(o, "    pub fn {}_run({}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, sp, rr, pf, sc).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_run({}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+                task.name, sp, rr, pf, sc
+            )
+            .unwrap();
         } else {
-            writeln!(o, "    pub fn {}_run({}) {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, sp, pf, sc).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_run({}) {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+                task.name, sp, pf, sc
+            )
+            .unwrap();
         }
     } else {
         if has_ret {
-            writeln!(o, "    pub fn {}_run({}, {}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, sp, ep, rr, pf, all_a).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_run({}, {}) -> {} {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+                task.name, sp, ep, rr, pf, all_a
+            )
+            .unwrap();
         } else {
-            writeln!(o, "    pub fn {}_run({}, {}) {{ unsafe {{ {}_RUN_w({}) }} }}\n", task.name, sp, ep, pf, all_a).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_run({}, {}) {{ unsafe {{ {}_RUN_w({}) }} }}\n",
+                task.name, sp, ep, pf, all_a
+            )
+            .unwrap();
         }
     }
 
     // newframe (no worker)
+    allow_raw_ptr_lint_if_needed(o, task, "    ");
     if ep.is_empty() {
         if has_ret {
-            writeln!(o, "    pub fn {}_newframe({}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, sp, rr, pf, sc).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_newframe({}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+                task.name, sp, rr, pf, sc
+            )
+            .unwrap();
         } else {
-            writeln!(o, "    pub fn {}_newframe({}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, sp, pf, sc).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_newframe({}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+                task.name, sp, pf, sc
+            )
+            .unwrap();
         }
     } else {
         if has_ret {
-            writeln!(o, "    pub fn {}_newframe({}, {}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, sp, ep, rr, pf, all_a).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_newframe({}, {}) -> {} {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+                task.name, sp, ep, rr, pf, all_a
+            )
+            .unwrap();
         } else {
-            writeln!(o, "    pub fn {}_newframe({}, {}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n", task.name, sp, ep, pf, all_a).unwrap();
+            writeln!(
+                o,
+                "    pub fn {}_newframe({}, {}) {{ unsafe {{ {}_NEWFRAME_w({}) }} }}\n",
+                task.name, sp, ep, pf, all_a
+            )
+            .unwrap();
         }
     }
 
     // together (no worker)
+    allow_raw_ptr_lint_if_needed(o, task, "    ");
     if ep.is_empty() {
-        writeln!(o, "    pub fn {}_together({}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n", task.name, sp, pf, sc).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_together({}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n",
+            task.name, sp, pf, sc
+        )
+        .unwrap();
     } else {
-        writeln!(o, "    pub fn {}_together({}, {}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n", task.name, sp, ep, pf, all_a).unwrap();
+        writeln!(
+            o,
+            "    pub fn {}_together({}, {}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n",
+            task.name, sp, ep, pf, all_a
+        )
+        .unwrap();
     }
 }
 

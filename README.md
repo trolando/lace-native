@@ -247,6 +247,18 @@ cp /path/to/lace/src/lace.{h,c} lace-native/vendor/
 
 Use Lace directly for C or C++ projects. Use `lace-native` when you want to implement Lace tasks in Rust while keeping the native C backend.
 
+See the [Developer's Guide](GUIDE.md) for a tutorial covering task definitions, spawn/sync patterns, borrowing rules, method tasks, and performance tips.
+
+## Benchmarks
+
+The `benchmarks/rayon-compare` crate runs the same algorithms (Fibonacci, N-Queens) in both lace-native and Rayon with the same thread count:
+
+```bash
+cargo run --release -p rayon-compare -- -w 4
+```
+
+This is not meant as a competition — the frameworks have different design goals. Lace targets fine-grained fork-join with minimal per-task overhead; Rayon provides a broader parallel iterator ecosystem.
+
 ## Academic publications
 
 If you use Lace or `lace-native` in academic work, please cite the original Lace publication:
