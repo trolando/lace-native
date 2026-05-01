@@ -1,0 +1,11 @@
+[package]
+name = "lace-example-fib"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lace-ws = { path = "../../lace-ws" }
+
+[build-dependencies]
+lace-ws-build = { path = "../../lace-ws-build" }

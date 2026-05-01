@@ -1,0 +1,13 @@
+# tasks.def — Fibonacci task for Lace
+
+c {
+    #include "lace.h"
+}
+
+rust {
+}
+
+types {
+}
+
+task fib(n: i32) -> i32

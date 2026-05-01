@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "lace-ws",
+    "lace-ws-build",
+    "examples/fib",
+]

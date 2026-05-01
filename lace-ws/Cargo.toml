@@ -1,0 +1,21 @@
+[package]
+name = "lace-ws"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for the Lace work-stealing framework for multi-core fork-join parallelism"
+license = "Apache-2.0"
+repository = "https://github.com/trolando/lace-rs"
+homepage = "https://github.com/trolando/lace"
+keywords = ["parallelism", "work-stealing", "fork-join", "concurrency", "multicore"]
+categories = ["concurrency", "algorithms"]
+readme = "../README.md"
+links = "lace"
+
+[features]
+default = ["backoff"]
+backoff = []       # Workers sleep when idle (exponential backoff via futex)
+hwloc = []         # Pin workers to cores using hwloc
+stats = []         # Enable per-worker steal/task/split counters
+
+[build-dependencies]
+cc = "1"

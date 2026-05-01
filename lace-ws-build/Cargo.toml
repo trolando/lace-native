@@ -1,0 +1,13 @@
+[package]
+name = "lace-ws-build"
+version = "0.1.0"
+edition = "2021"
+description = "Build-time code generator for lace-ws task definitions"
+license = "Apache-2.0"
+repository = "https://github.com/trolando/lace-rs"
+keywords = ["parallelism", "work-stealing", "build-tools"]
+categories = ["development-tools::build-utils"]
+readme = "../README.md"
+
+[dependencies]
+cc = "1"
