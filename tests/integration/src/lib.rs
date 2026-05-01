@@ -47,15 +47,20 @@ fn nqueens(w: &Worker, a: *const i32, n: i32, d: i32, i: i32) -> i64 {
 }
 
 // ── Tests ─────────────────────────────────────────
-// Lace is a process-global resource, so tests must run sequentially:
-//   cargo test -- --test-threads=1
+// Lace is a process-global resource. Tests are serialized via LACE_MUTEX
+// so they work correctly even with parallel test threads.
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static LACE_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn fib_correctness() {
+        let _lock = LACE_MUTEX.lock().unwrap();
+
         lace_ws::start(1, 0, 0);
 
         assert_eq!(fib_run(0), 0);
@@ -71,9 +76,10 @@ mod tests {
 
     #[test]
     fn nqueens_correctness() {
+        let _lock = LACE_MUTEX.lock().unwrap();
+
         lace_ws::start(1, 0, 0);
 
-        // Known values (OEIS A000170)
         let expected: &[(i32, i64)] = &[
             (1, 1), (2, 0), (3, 0), (4, 2), (5, 10),
             (6, 4), (7, 40), (8, 92), (9, 352), (10, 724),
@@ -90,7 +96,8 @@ mod tests {
 
     #[test]
     fn lifecycle() {
-        // Start, use, stop, restart, use again
+        let _lock = LACE_MUTEX.lock().unwrap();
+
         assert!(!lace_ws::is_running());
 
         lace_ws::start(2, 0, 0);
@@ -110,9 +117,8 @@ mod tests {
 
     #[test]
     fn nqueens_uses_c_style_sync() {
-        // nqueens internally does multi-spawn then multi-sync using
-        // the standalone nqueens_sync(w) — this test confirms that
-        // pattern works correctly through the generated bindings.
+        let _lock = LACE_MUTEX.lock().unwrap();
+
         lace_ws::start(1, 0, 0);
         assert_eq!(nqueens_run(std::ptr::null(), 8, -1, 0), 92);
         lace_ws::stop();
