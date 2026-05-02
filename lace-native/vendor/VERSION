@@ -1,8 +1,7 @@
 Vendored from: https://github.com/trolando/lace
-Version: 2.3.2
+Version: v2.3.2
 Commit: e6fbfdd
-Date: 2025-05-01
+Date: 2026-05-01
 
 To update:
-  cp /path/to/lace/src/lace.{h,c} .
-  Update this file with the new commit hash and version.
+  ./scripts/vendor-lace.sh /path/to/lace

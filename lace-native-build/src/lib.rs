@@ -290,12 +290,8 @@ fn parse_def_file(content: &str) -> DefFile {
             State::TopLevel | State::InTypesBlock | State::InImplBlock(_)
                 if line.is_empty() || line.starts_with('#') =>
             {
-                continue
+                continue;
             }
-            // Inside c { } and rust { } blocks, preserve ALL lines including #include
-            _ => {}
-        }
-        match &state {
             State::TopLevel => {
                 if line == "c {" {
                     state = State::InCBlock;

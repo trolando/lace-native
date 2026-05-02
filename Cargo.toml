@@ -5,6 +5,7 @@ members = [
     "lace-native-build",
     "examples/fib",
     "examples/nqueens",
+    "examples/uts",
     "examples/bench",
     "benchmarks/rayon-compare",
     "tests/integration",

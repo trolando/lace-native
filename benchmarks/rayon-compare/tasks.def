@@ -4,3 +4,4 @@ c {
 
 task fib(n: i32) -> i32
 task nqueens(a: *const i32, n: i32, d: i32, i: i32) -> i64
+task uts(state: *const u8, depth: i32) -> i64

@@ -1,0 +1,5 @@
+c {
+    #include "lace.h"
+}
+
+task uts(state: *const u8, depth: i32) -> i64

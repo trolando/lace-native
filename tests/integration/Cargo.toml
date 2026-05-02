@@ -9,6 +9,7 @@ doc = false
 
 [dependencies]
 lace-native = { path = "../../lace-native" }
+sha1 = "0.10"
 
 [build-dependencies]
 lace-native-build = { path = "../../lace-native-build" }

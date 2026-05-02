@@ -254,6 +254,44 @@ The right cutoff depends on the cost per task. As a rule of thumb, if a
 task does less than ~1 microsecond of work, it is too fine-grained to
 benefit from spawning.
 
+## Pitfall: dangling pointers in spawn loops
+
+When passing raw pointers to spawned tasks, ensure the data stays alive
+until after all corresponding syncs. This is a common mistake:
+
+```rust
+// WRONG — child_state is dropped at end of each iteration,
+// but the spawned task holds a pointer to it!
+for i in 0..n {
+    let child_state = compute_child(i);
+    let _ = task_spawn(w, child_state.as_ptr());
+}
+for _ in 0..n {
+    total += task_sync(w);  // dangling pointer!
+}
+```
+
+The fix is to keep all data alive until after all syncs:
+
+```rust
+// CORRECT — all child states live until after all syncs
+let children: Vec<State> = (0..n)
+    .map(|i| compute_child(i))
+    .collect();
+
+for cs in &children {
+    let _ = task_spawn(w, cs.as_ptr());
+}
+for _ in 0..n {
+    total += task_sync(w);  // children is still alive
+}
+```
+
+This is the same issue you'd encounter in C with stack-allocated temporaries
+and spawned tasks. Reference parameters (`&T`, `&mut T`) are protected by
+the guard's borrow tracking, but raw pointers (`*const T`, `*mut T`) are
+your responsibility — the framework cannot track their lifetimes.
+
 ## Lifecycle and multiple start/stop cycles
 
 Lace supports starting and stopping multiple times in the same process:
@@ -346,3 +384,88 @@ lace-native = { version = "0.1", features = ["stats"] }
 | `backoff` | yes | Idle workers sleep progressively (saves CPU) |
 | `hwloc` | no | Pin workers to cores (requires `libhwloc-dev`) |
 | `stats` | no | Print steal/task/split counters on `stop()` |
+
+## Cross-language LTO
+
+By default, each task spawn and sync crosses the Rust→C FFI boundary
+through a non-inline wrapper function. This adds a small overhead per
+call (typically one extra function call frame). For workloads with
+very fine-grained tasks, this overhead can become visible.
+
+**Cross-language LTO** (Link-Time Optimization) allows the compiler to
+inline the C deque operations through the FFI boundary into the Rust
+call sites, potentially eliminating the wrapper overhead entirely.
+
+### Requirements
+
+Cross-language LTO requires all code (Rust and C) to be compiled to
+LLVM bitcode and linked with an LLVM-based linker:
+
+- **Clang** as the C compiler (not GCC)
+- **lld** or **mold** as the linker (not GNU ld)
+- **Rust nightly** or stable with `-C linker-plugin-lto`
+
+### Setup
+
+Create a `.cargo/config.toml` in your project root:
+
+```toml
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "linker-plugin-lto", "-C", "link-arg=-fuse-ld=lld"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "linker-plugin-lto", "-C", "link-arg=-fuse-ld=lld"]
+
+[target.aarch64-apple-darwin]
+linker = "clang"
+rustflags = ["-C", "linker-plugin-lto"]
+# macOS uses Apple's linker by default, which supports LTO natively.
+```
+
+Set the C compiler for the `cc` crate:
+
+```bash
+export CC=clang
+cargo build --release
+```
+
+### How it works
+
+With cross-language LTO enabled:
+
+1. `lace-native` compiles `lace.c` with Clang and `-flto=thin`,
+   producing LLVM bitcode instead of machine code.
+2. `lace-native-build` compiles the generated `lace_tasks.c` wrappers
+   the same way.
+3. `rustc` produces LLVM bitcode for the Rust code.
+4. The LLVM linker sees all bitcode together and can inline across
+   the C/Rust boundary.
+
+In particular, the `fib_SPAWN_w` wrapper (which just calls the
+`fib_SPAWN` inline function) can be inlined into the Rust `fib_spawn`
+call site, eliminating the FFI call overhead entirely.
+
+### Verifying LTO is active
+
+Build with verbose output and check for bitcode flags:
+
+```bash
+CC=clang cargo build --release -vv 2>&1 | grep -E "flto|linker-plugin"
+```
+
+You should see `-flto=thin` in the C compilation and
+`-Clinker-plugin-lto` in the Rust compilation.
+
+### When to use it
+
+For most workloads, the FFI overhead is negligible compared to the
+actual task computation. Cross-language LTO is most beneficial for:
+
+- Micro-benchmarks measuring raw spawn/sync overhead
+- Algorithms with extremely fine-grained tasks (sub-microsecond)
+- Comparisons with native C Lace performance
+
+For typical workloads with reasonable task granularity (>1 µs per task),
+standard compilation is sufficient.
