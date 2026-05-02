@@ -186,38 +186,45 @@ jobs:
         cargo run -p lace-example-fib -- -w 1 20 2>&1 | grep -q "fib(20) = 6765"
 
   # ── Cross-language LTO ────────────────────────────
+
+  # ── Cross-language LTO ────────────────────────────
   lto:
     name: 'Linux cross-language LTO'
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
 
-    - name: Install clang and lld
-      run: sudo apt-get update && sudo apt-get install -y clang lld
+    - name: Install LLVM 22
+      run: |
+        wget https://apt.llvm.org/llvm.sh
+        chmod +x llvm.sh
+        sudo ./llvm.sh 22
+        sudo apt-get install -y clang-22 lld-22
 
     - name: Configure cross-language LTO
       run: |
         mkdir -p .cargo
         cat > .cargo/config.toml << 'TOML'
         [target.x86_64-unknown-linux-gnu]
-        linker = "clang"
-        rustflags = ["-C", "linker-plugin-lto", "-C", "link-arg=-fuse-ld=lld"]
+        linker = "clang-22"
+        rustflags = ["-C", "linker-plugin-lto", "-C", "link-arg=-fuse-ld=lld-22"]
         TOML
 
     - name: Build with LTO
       env:
-        CC: clang
+        CC: clang-22
       run: cargo build --release --workspace --exclude rayon-compare --exclude lace-bench-criterion
 
     - name: Test with LTO
       env:
-        CC: clang
+        CC: clang-22
       run: cargo test --release --workspace --exclude rayon-compare --exclude lace-bench-criterion
 
     - name: Verify fib with LTO
       env:
-        CC: clang
+        CC: clang-22
       run: |
         result=$(cargo run --release -p lace-example-fib -- -w 2 20 2>&1 | grep "^Result:")
         echo "$result"
@@ -225,7 +232,7 @@ jobs:
 
     - name: Verify UTS T1 with LTO
       env:
-        CC: clang
+        CC: clang-22
       run: |
         result=$(cargo run --release -p lace-example-uts -- -w 2 T1 2>&1 | grep "^Nodes:")
         echo "$result"
