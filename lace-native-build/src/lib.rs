@@ -829,6 +829,12 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
     let has_ret = task.ret_type.is_some();
     let pf = c_prefix(task);
 
+    writeln!(
+        o,
+        "/// Guard for a spawned `{}` task. Sync or drop before the next spawn.",
+        task.name
+    )
+    .unwrap();
     writeln!(o, "#[allow(dead_code)]").unwrap();
     if has_lt {
         writeln!(o, "pub struct {}<'__lace> {{", gn).unwrap();
@@ -874,11 +880,17 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
     if has_ret {
         writeln!(
             o,
+            "    /// Wait for the spawned task and return its result."
+        )
+        .unwrap();
+        writeln!(
+            o,
             "    pub fn sync(self, w: &Worker) -> {} {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}",
             rr, pf
         )
         .unwrap();
     } else {
+        writeln!(o, "    /// Wait for the spawned task to complete.").unwrap();
         writeln!(
             o,
             "    pub fn sync(self, w: &Worker) {{ unsafe {{ {}_SYNC_w(w.as_ptr()) }} }}",
@@ -886,6 +898,11 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
         )
         .unwrap();
     }
+    writeln!(
+        o,
+        "    /// Cancel the spawned task (unless already stolen by another worker)."
+    )
+    .unwrap();
     writeln!(
         o,
         "    pub fn drop(self, w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}",
@@ -962,6 +979,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
 
     // spawn
     allow_raw_ptr_lint_if_needed(o, task, "");
+    writeln!(
+        o,
+        "/// Spawn `{}` as a parallel task. Returns a guard for sync/drop.",
+        task.name
+    )
+    .unwrap();
     writeln!(o, "#[must_use]").unwrap();
     if has_lt {
         writeln!(
@@ -983,6 +1006,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
     writeln!(o, "}}\n").unwrap();
 
     // sync (standalone, C-style)
+    writeln!(
+        o,
+        "/// Sync the most recently spawned `{}` task (C-style, without guard).",
+        task.name
+    )
+    .unwrap();
     if has_ret {
         writeln!(
             o,
@@ -1002,6 +1031,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
     // drop (standalone)
     writeln!(
         o,
+        "/// Drop the most recently spawned `{}` task (C-style, without guard).",
+        task.name
+    )
+    .unwrap();
+    writeln!(
+        o,
         "pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n",
         task.name, pf
     )
@@ -1009,6 +1044,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
 
     // run (auto-dispatch, no worker — works from any thread)
     allow_raw_ptr_lint_if_needed(o, task, "");
+    writeln!(
+        o,
+        "/// Run `{}` synchronously. Works from any thread (Lace worker or external).",
+        task.name
+    )
+    .unwrap();
     if has_ret {
         writeln!(
             o,
@@ -1027,6 +1068,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
 
     // newframe (no worker)
     allow_raw_ptr_lint_if_needed(o, task, "");
+    writeln!(
+        o,
+        "/// Interrupt all workers to execute `{}`, then resume previous work.",
+        task.name
+    )
+    .unwrap();
     if has_ret {
         writeln!(
             o,
@@ -1045,6 +1092,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
 
     // together (no worker)
     allow_raw_ptr_lint_if_needed(o, task, "");
+    writeln!(
+        o,
+        "/// All workers execute a copy of `{}` (barrier semantics).",
+        task.name
+    )
+    .unwrap();
     writeln!(
         o,
         "pub fn {}_together({}) {{ unsafe {{ {}_TOGETHER_w({}) }} }}\n",
@@ -1080,6 +1133,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
 
     // spawn
     allow_raw_ptr_lint_if_needed(o, task, "    ");
+    writeln!(
+        o,
+        "    /// Spawn `{}` as a parallel task. Returns a guard for sync/drop.",
+        task.name
+    )
+    .unwrap();
     writeln!(o, "    #[must_use]").unwrap();
     if ep.is_empty() {
         writeln!(
@@ -1106,6 +1165,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
     writeln!(o, "    }}\n").unwrap();
 
     // sync (standalone)
+    writeln!(
+        o,
+        "    /// Sync the most recently spawned `{}` task (C-style, without guard).",
+        task.name
+    )
+    .unwrap();
     if has_ret {
         writeln!(
             o,
@@ -1125,6 +1190,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
     // drop (standalone)
     writeln!(
         o,
+        "    /// Drop the most recently spawned `{}` task (C-style, without guard).",
+        task.name
+    )
+    .unwrap();
+    writeln!(
+        o,
         "    pub fn {}_drop(w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}\n",
         task.name, pf
     )
@@ -1132,6 +1203,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
 
     // run (no worker)
     allow_raw_ptr_lint_if_needed(o, task, "    ");
+    writeln!(
+        o,
+        "    /// Run `{}` synchronously. Works from any thread.",
+        task.name
+    )
+    .unwrap();
     if ep.is_empty() {
         if has_ret {
             writeln!(
@@ -1168,6 +1245,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
 
     // newframe (no worker)
     allow_raw_ptr_lint_if_needed(o, task, "    ");
+    writeln!(
+        o,
+        "    /// Interrupt all workers to execute `{}`, then resume.",
+        task.name
+    )
+    .unwrap();
     if ep.is_empty() {
         if has_ret {
             writeln!(
@@ -1204,6 +1287,12 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
 
     // together (no worker)
     allow_raw_ptr_lint_if_needed(o, task, "    ");
+    writeln!(
+        o,
+        "    /// All workers execute a copy of `{}` (barrier semantics).",
+        task.name
+    )
+    .unwrap();
     if ep.is_empty() {
         writeln!(
             o,
