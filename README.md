@@ -257,7 +257,7 @@ See the [Developer's Guide](GUIDE.md) for a tutorial covering task definitions, 
 
 ## Benchmarks
 
-The `benchmarks/rayon-compare` crate runs the same algorithms (Fibonacci, N-Queens) in both lace-native and Rayon with the same thread count:
+The `examples/rayon-compare` crate runs the same algorithms (Fibonacci, N-Queens, UTS T3L) in both lace-native and Rayon with the same thread count:
 
 ```bash
 cargo run --release -p rayon-compare -- -w 4
