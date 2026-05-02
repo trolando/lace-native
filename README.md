@@ -113,8 +113,11 @@ cargo run --release -p lace-example-fib -- -w 4 42
 # Run N-Queens; default is n = 14.
 cargo run --release -p lace-example-nqueens -- -w 4 14
 
-# Run UTS (Unbalanced Tree Search); configs: T1, T1L, T1XL.
-cargo run --release -p lace-example-uts -- -w 4 T1
+# Run UTS (Unbalanced Tree Search); configs: T1, T1L, T1XL, T3L, etc.
+cargo run --release -p lace-example-uts -- -w 4 T3L
+
+# Run parallel tree traversal (method tasks with &self).
+cargo run --release -p lace-example-tree -- -w 4 -d 24
 
 # Run the scaling benchmark (fib + nqueens across 1..N workers).
 cargo run --release -p lace-example-bench

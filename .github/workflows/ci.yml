@@ -166,3 +166,21 @@ jobs:
         result=$(cargo run --release -p lace-example-fib -- -w 1 20 2>&1 | grep "^Result:")
         echo "$result"
         echo "$result" | grep -q "fib(20) = 6765"
+
+  # ── MSRV ──────────────────────────────────────────
+  msrv:
+    name: 'MSRV (Rust 1.70)'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@1.70.0
+
+    - name: Build core crates
+      run: cargo build -p lace-native -p lace-native-build
+
+    - name: Build fib example
+      run: cargo build -p lace-example-fib
+
+    - name: Test fib
+      run: |
+        cargo run -p lace-example-fib -- -w 1 20 2>&1 | grep -q "fib(20) = 6765"

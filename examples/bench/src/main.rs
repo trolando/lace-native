@@ -1,4 +1,4 @@
-use sha1::{Digest, Sha1};
+use lace_example_uts::{self as uts_lib, RngState};
 use std::time::Instant;
 
 include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
@@ -44,67 +44,15 @@ fn nqueens(w: &Worker, a: *const i32, n: i32, d: i32, i: i32) -> i64 {
     sum
 }
 
-// ── UTS (T3L: binomial, b=2000, q=0.200014, m=5, seed=7) ──
-
-type RngState = [u8; 20];
-
-fn rng_init(seed: i32) -> RngState {
-    let mut input = [0u8; 20];
-    input[16] = (seed >> 24) as u8;
-    input[17] = (seed >> 16) as u8;
-    input[18] = (seed >> 8) as u8;
-    input[19] = seed as u8;
-    let mut hasher = Sha1::new();
-    hasher.update(input);
-    let result = hasher.finalize();
-    let mut state = [0u8; 20];
-    state.copy_from_slice(&result);
-    state
-}
-
-fn rng_spawn_state(parent: &RngState, spawn_number: i32) -> RngState {
-    let bytes = [
-        (spawn_number >> 24) as u8,
-        (spawn_number >> 16) as u8,
-        (spawn_number >> 8) as u8,
-        spawn_number as u8,
-    ];
-    let mut hasher = Sha1::new();
-    hasher.update(parent);
-    hasher.update(bytes);
-    let result = hasher.finalize();
-    let mut state = [0u8; 20];
-    state.copy_from_slice(&result);
-    state
-}
-
-fn rng_rand(state: &RngState) -> i32 {
-    let b = ((state[16] as u32) << 24)
-        | ((state[17] as u32) << 16)
-        | ((state[18] as u32) << 8)
-        | (state[19] as u32);
-    (b & 0x7fff_ffff) as i32
-}
-
-fn rng_to_prob(n: i32) -> f64 {
-    (n as f64) / 2147483648.0
-}
-
-const UTS_B_0: f64 = 2000.0;
-const UTS_Q: f64 = 0.200014;
-const UTS_M: i32 = 5;
+// ── UTS (uses T3L config from lace-example-uts) ──
 
 fn uts_num_children(state: &RngState, depth: i32) -> i32 {
-    if depth == 0 {
-        return UTS_B_0.floor() as i32;
-    }
-    let v = rng_rand(state);
-    let d: f64 = rng_to_prob(v);
-    if d < UTS_Q {
-        UTS_M
-    } else {
-        0
-    }
+    uts_lib::num_children(
+        state,
+        depth,
+        uts_lib::node_type_at_depth(depth, &uts_lib::T3L),
+        &uts_lib::T3L,
+    )
 }
 
 fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
@@ -114,13 +62,13 @@ fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
         s
     };
 
-    let num_children = uts_num_children(&parent_state, depth);
-    if num_children == 0 {
+    let nc = uts_num_children(&parent_state, depth);
+    if nc == 0 {
         return 1;
     }
 
-    let child_states: Vec<RngState> = (0..num_children)
-        .map(|i| rng_spawn_state(&parent_state, i))
+    let child_states: Vec<RngState> = (0..nc)
+        .map(|i| uts_lib::rng_spawn(&parent_state, i))
         .collect();
 
     for cs in &child_states {
@@ -128,7 +76,7 @@ fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
     }
 
     let mut count = 1i64;
-    for _ in 0..num_children {
+    for _ in 0..nc {
         count += uts_sync(w);
     }
     count
@@ -170,7 +118,6 @@ fn main() {
         i += 1;
     }
 
-    // Determine available workers
     lace_native::start(max_workers, 0, 0);
     let avail = lace_native::worker_count();
     lace_native::stop();
@@ -180,7 +127,7 @@ fn main() {
     let nq_n = 13i32;
     let nq_expect = 73712i64;
     let uts_expect = 111345631i64;
-    let uts_root = rng_init(7);
+    let uts_root = uts_lib::rng_init(uts_lib::T3L.seed);
 
     println!("lace-native scaling benchmark");
     println!("=============================");
@@ -188,7 +135,6 @@ fn main() {
     println!("Available workers: {}", avail);
     println!();
 
-    // Worker counts: 1, 2, 4, ..., avail
     let mut worker_counts = vec![1u32];
     let mut w = 2;
     while w < avail {
@@ -214,7 +160,6 @@ fn main() {
     let mut uts_base = 0.0f64;
 
     for &nw in &worker_counts {
-        // Use 64MB stack for UTS T3L (depth ~17K)
         lace_native::start(nw, 0, 64 * 1024 * 1024);
 
         let fib_time = bench("fib", fib_expect, || fib_run(fib_n));
@@ -254,9 +199,6 @@ fn main() {
     }
 
     println!();
-    println!(
-        "UTS T3L: binomial, b=2000, q=0.200, m=5, seed=7, {} nodes",
-        uts_expect
-    );
+    println!("UTS T3L: binomial, {} nodes", uts_expect);
     println!();
 }

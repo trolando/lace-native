@@ -1,0 +1,10 @@
+# tasks.def — parallel tree traversal with method tasks
+
+c {
+    #include "lace.h"
+}
+
+impl Tree {
+    task count(&self) -> i64
+    task sum(&self) -> i64
+}
