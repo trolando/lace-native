@@ -369,6 +369,39 @@ cargo build
 Both `lace-native` and `lace-native-build` respect this variable. The
 vendored sources are ignored when `LACE_DIR` is set.
 
+## Utility functions
+
+**`lace_native::is_worker()`** returns `true` if called from a Lace worker
+thread. Useful in library code that must behave differently depending on
+its calling context:
+
+```rust
+if lace_native::is_worker() {
+    // Running inside a task — can use spawn/sync
+} else {
+    // External thread — use _run instead
+}
+```
+
+**`lace_native::set_verbosity(level)`** controls Lace startup messages.
+Call before `start()`. Level 0 (default) is silent; level 1 prints
+diagnostics (worker count, deque size, etc.):
+
+```rust
+lace_native::set_verbosity(1);
+lace_native::start(0, 0, 0);  // prints startup info
+```
+
+**`Worker::rng()`** provides a fast per-worker pseudo-random number
+generator (xoroshiro128**). Each worker has its own state, so there is
+no contention:
+
+```rust
+fn my_task(w: &Worker) {
+    let random_value: u64 = w.rng();
+}
+```
+
 ## Feature flags
 
 Set features on the `lace-native` crate. They control the C compilation
@@ -469,3 +502,68 @@ actual task computation. Cross-language LTO is most beneficial for:
 
 For typical workloads with reasonable task granularity (>1 µs per task),
 standard compilation is sufficient.
+
+## Benchmarks and examples
+
+The repository includes several benchmarks and examples, each serving
+a different purpose:
+
+### Examples (in `examples/`)
+
+**fib** — The simplest possible Lace program. Fork-join Fibonacci
+demonstrates the spawn/sync pattern with guards. Use this to understand
+the basic API. Not a realistic workload (too fine-grained without a
+sequential cutoff), but great for measuring raw fork-join overhead.
+
+**nqueens** — N-Queens solver demonstrating multi-spawn loops. Spawns
+N tasks in a loop and syncs them all with standalone `nqueens_sync(w)`.
+Shows why C-style sync is essential when guards would be awkward.
+
+**uts** — Unbalanced Tree Search, the standard work-stealing benchmark.
+Implements all standard UTS configurations (T1–T3XXL) from the original
+UTS paper. The binomial trees (T3, T3L) are the most important — they
+produce highly unbalanced workloads that stress the load balancer. The
+geometric trees (T1, T2) are more balanced and less interesting for
+work-stealing evaluation.
+
+**tree** — Parallel binary tree traversal demonstrating method tasks
+(`impl Tree { task count(&self) }`). Shows how `&self` methods enable
+multiple workers to traverse concurrently with compile-time borrow
+safety.
+
+**bench** — Quick scaling table showing fib(42), nqueens(13), and UTS
+T3L across 1..N workers. Use this for a fast overview of parallel
+speedup on your machine.
+
+**rayon-compare** — Side-by-side timing of the same algorithms in
+lace-native and Rayon. Both frameworks use the same thread count.
+Shows wall-clock time and a ratio for each benchmark.
+
+### Criterion benchmarks (in `benches/criterion/`)
+
+Statistically rigorous benchmarks with confidence intervals, regression
+detection, and HTML reports.
+
+Two benchmark groups:
+
+- **Scaling** (`fib-scaling`, `nqueens-scaling`, `uts-T3-scaling`,
+  `uts-T2-scaling`): measures each benchmark across 1, 2, 4, ..., N
+  workers. Shows parallel speedup curves.
+
+- **Comparison** (`fib-compare`, `nqueens-compare`, `uts-T3-compare`):
+  measures lace-native and Rayon side by side at maximum worker count.
+  Criterion generates violin plots comparing the two distributions.
+
+```bash
+# Run everything (scaling + comparison)
+cargo bench -p lace-bench-criterion
+
+# Just the comparison
+cargo bench -p lace-bench-criterion -- "compare"
+
+# Just fib scaling
+cargo bench -p lace-bench-criterion -- "fib-scaling"
+```
+
+HTML reports are saved in `target/criterion/`. Open
+`target/criterion/report/index.html` for an overview of all benchmarks.

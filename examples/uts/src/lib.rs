@@ -68,6 +68,7 @@ pub fn rng_to_prob(n: i32) -> f64 {
 
 const MAXNUMCHILDREN: i32 = 100;
 
+/// UTS tree type.
 #[derive(Clone, Copy, PartialEq)]
 pub enum TreeType {
     Binomial,
@@ -75,6 +76,7 @@ pub enum TreeType {
     Hybrid,
 }
 
+/// Shape function for geometric trees.
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub enum GeoShape {
@@ -84,16 +86,26 @@ pub enum GeoShape {
     Fixed,
 }
 
+/// Configuration for a UTS tree instance.
 #[derive(Clone)]
 pub struct UtsConfig {
+    /// Short name (e.g. "T1", "T3L").
     pub name: &'static str,
+    /// Tree generation type.
     pub tree_type: TreeType,
+    /// Root branching factor.
     pub b_0: f64,
+    /// Maximum depth for geometric trees.
     pub gen_mx: i32,
+    /// Shape function for geometric trees.
     pub shape: GeoShape,
+    /// RNG seed.
     pub seed: i32,
+    /// Non-leaf probability for binomial trees (q).
     pub non_leaf_prob: f64,
+    /// Non-leaf branching factor for binomial trees (m).
     pub non_leaf_bf: i32,
+    /// Hybrid tree: depth fraction where GEO switches to BIN.
     pub shift_depth: f64,
 }
 
@@ -178,24 +190,11 @@ pub fn node_type_at_depth(depth: i32, cfg: &UtsConfig) -> TreeType {
     }
 }
 
-/// Determine child type.
-pub fn child_type(depth: i32, parent_type: TreeType, cfg: &UtsConfig) -> TreeType {
-    match parent_type {
-        TreeType::Hybrid => {
-            if (depth as f64) < cfg.shift_depth * (cfg.gen_mx as f64) {
-                TreeType::Hybrid
-            } else {
-                TreeType::Binomial
-            }
-        }
-        other => other,
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Standard configurations from sample_trees.sh
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// T1: Geometric/fixed, ~4.1M nodes, b=4, d=10, seed=19.
 pub const T1: UtsConfig = UtsConfig {
     name: "T1",
     tree_type: TreeType::Geometric,
@@ -207,6 +206,7 @@ pub const T1: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T5: Geometric/linear, ~4.1M nodes, b=4, d=20, seed=34.
 pub const T5: UtsConfig = UtsConfig {
     name: "T5",
     tree_type: TreeType::Geometric,
@@ -218,6 +218,7 @@ pub const T5: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T2: Geometric/cyclic, ~4.1M nodes, b=6, d=16, seed=502.
 pub const T2: UtsConfig = UtsConfig {
     name: "T2",
     tree_type: TreeType::Geometric,
@@ -229,6 +230,7 @@ pub const T2: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T3: Binomial (unbalanced), ~4.1M nodes, q=0.125, m=8, seed=42.
 pub const T3: UtsConfig = UtsConfig {
     name: "T3",
     tree_type: TreeType::Binomial,
@@ -240,6 +242,7 @@ pub const T3: UtsConfig = UtsConfig {
     non_leaf_bf: 8,
     shift_depth: 0.0,
 };
+/// T4: Hybrid (GEO→BIN), ~4.1M nodes, b=6, d=16, seed=1.
 pub const T4: UtsConfig = UtsConfig {
     name: "T4",
     tree_type: TreeType::Hybrid,
@@ -251,6 +254,8 @@ pub const T4: UtsConfig = UtsConfig {
     non_leaf_bf: 4,
     shift_depth: 0.5,
 };
+
+/// T1L: Geometric/fixed, ~102M nodes, b=4, d=13, seed=29.
 pub const T1L: UtsConfig = UtsConfig {
     name: "T1L",
     tree_type: TreeType::Geometric,
@@ -262,6 +267,7 @@ pub const T1L: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T2L: Geometric/cyclic, ~97M nodes, b=7, d=23, seed=220.
 pub const T2L: UtsConfig = UtsConfig {
     name: "T2L",
     tree_type: TreeType::Geometric,
@@ -273,6 +279,7 @@ pub const T2L: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T3L: Binomial (unbalanced), ~111M nodes, q=0.200, m=5, seed=7.
 pub const T3L: UtsConfig = UtsConfig {
     name: "T3L",
     tree_type: TreeType::Binomial,
@@ -284,6 +291,8 @@ pub const T3L: UtsConfig = UtsConfig {
     non_leaf_bf: 5,
     shift_depth: 0.0,
 };
+
+/// T1XL: Geometric/fixed, ~1.6B nodes, b=4, d=15, seed=29.
 pub const T1XL: UtsConfig = UtsConfig {
     name: "T1XL",
     tree_type: TreeType::Geometric,
@@ -295,6 +304,7 @@ pub const T1XL: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T1XXL: Geometric/fixed, ~4.2B nodes, b=4, d=15, seed=19.
 pub const T1XXL: UtsConfig = UtsConfig {
     name: "T1XXL",
     tree_type: TreeType::Geometric,
@@ -306,6 +316,7 @@ pub const T1XXL: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
+/// T3XXL: Binomial (unbalanced), ~2.8B nodes, q=0.500, m=2, seed=316.
 pub const T3XXL: UtsConfig = UtsConfig {
     name: "T3XXL",
     tree_type: TreeType::Binomial,
@@ -318,6 +329,7 @@ pub const T3XXL: UtsConfig = UtsConfig {
     shift_depth: 0.0,
 };
 
+/// All standard UTS configurations.
 pub fn all_configs() -> Vec<&'static UtsConfig> {
     vec![
         &T1, &T5, &T2, &T3, &T4, &T1L, &T2L, &T3L, &T1XL, &T1XXL, &T3XXL,

@@ -8,8 +8,8 @@ Initial release.
 
 ### Features
 
-- **`lace-native`** runtime crate: `start`/`stop`, `Worker` handle, `barrier`, `get_worker`
-- **`lace-native-build`** code generator: parses `tasks.def`, generates C wrappers and safe Rust bindings
+- **`lace-native`** runtime crate: `start`/`stop`, `Worker` handle, `barrier`, `get_worker`, `is_worker`, `set_verbosity`, `Worker::rng()`
+- **`lace-native-build`** code generator: parses `tasks.def`, generates C wrappers and safe Rust bindings with doc comments
 - Cargo features: `backoff` (default), `hwloc`, `stats`
 - Guard-based borrow-checked spawn/sync for `&mut T` parameters
 - C-style standalone `_sync`/`_drop` for multi-spawn loops
@@ -17,9 +17,9 @@ Initial release.
 - Method tasks via `impl Type { task name(&self, ...) }` syntax
 - Vendored Lace 2.3.2 C sources with `LACE_DIR` override for development
 - Vendor update script (`scripts/vendor-lace.sh`)
-- Comprehensive doc comments on all public API items
+- Comprehensive doc comments on all public API items and generated code
 - Helpful parse error messages with line numbers and context
-- Developer's guide (`GUIDE.md`) with cross-language LTO documentation
+- Developer's guide (`GUIDE.md`) with LTO docs, pitfall docs, benchmark guide
 - CI: Linux, macOS, Windows with MSVC, feature matrix, clippy, rustfmt
 - CI: Cross-language LTO verification (Clang + lld)
 - CI: MSRV verification (Rust 1.70)

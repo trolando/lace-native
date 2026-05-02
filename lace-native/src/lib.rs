@@ -130,6 +130,15 @@ impl Worker {
     pub fn yield_now(&self) {
         unsafe { lace_yield(self.raw) }
     }
+
+    /// Thread-local pseudo-random number generator (xoroshiro128**).
+    ///
+    /// Each worker has its own RNG state, so this function is
+    /// contention-free. Useful for randomized algorithms that need
+    /// fast, non-synchronized random numbers.
+    pub fn rng(&self) -> u64 {
+        unsafe { lace_rng_ext(self.raw) }
+    }
 }
 
 unsafe impl Send for Worker {}
@@ -197,13 +206,32 @@ pub fn barrier() {
     unsafe { lace_barrier() }
 }
 
+/// Set the verbosity level for Lace startup messages.
+///
+/// Call before [`start()`]. Level 0 (default) suppresses output;
+/// level 1 prints startup diagnostics (worker count, deque size, etc.).
+pub fn set_verbosity(level: i32) {
+    unsafe { lace_set_verbosity(level) }
+}
+
+/// Returns `true` if the calling thread is a Lace worker.
+///
+/// Useful in library code that needs to behave differently depending
+/// on whether it's running inside a Lace task or from an external thread.
+pub fn is_worker() -> bool {
+    unsafe { lace_is_worker_ext() != 0 }
+}
+
 extern "C" {
     fn lace_start(n_workers: c_uint, dqsize: usize, stacksize: usize);
     fn lace_stop();
     fn lace_is_running() -> i32;
     fn lace_worker_count() -> c_uint;
     fn lace_barrier();
+    fn lace_set_verbosity(level: i32);
     fn lace_yield(lw: *mut LaceWorker);
     fn lace_get_worker_ext() -> *mut LaceWorker;
     fn lace_worker_id_ext() -> i32;
+    fn lace_is_worker_ext() -> i32;
+    fn lace_rng_ext(lw: *mut LaceWorker) -> u64;
 }
