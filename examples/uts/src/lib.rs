@@ -1,11 +1,13 @@
-//! UTS (Unbalanced Tree Search) tree generation library.
+//! UTS (Unbalanced Tree Search) benchmark for Lace.
 //!
-//! Provides the SHA-1 based RNG and tree configuration types used by the
-//! UTS benchmark. This module is shared across the UTS example, the scaling
-//! benchmark, and the Rayon comparison.
+//! Provides the SHA-1 based RNG, all standard tree configurations,
+//! and the Lace task implementation. Used as a library by bench,
+//! criterion, and rayon-compare.
 
 use sha1::{Digest, Sha1};
 use std::f64::consts::PI;
+
+include!(concat!(env!("OUT_DIR"), "/lace_tasks.rs"));
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHA-1 based RNG (matches UTS reference implementation bit-for-bit)
@@ -46,7 +48,7 @@ pub fn rng_spawn(parent: &RngState, spawn_number: i32) -> RngState {
     state
 }
 
-/// Extract a random value from the state (last 4 bytes, big-endian, masked).
+/// Extract a random value from the state.
 pub fn rng_rand(state: &RngState) -> i32 {
     let b = ((state[16] as u32) << 24)
         | ((state[17] as u32) << 16)
@@ -61,7 +63,7 @@ pub fn rng_to_prob(n: i32) -> f64 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// UTS tree types and shape functions
+// Tree types and shape functions
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const MAXNUMCHILDREN: i32 = 100;
@@ -95,7 +97,6 @@ pub struct UtsConfig {
     pub shift_depth: f64,
 }
 
-/// Compute number of children for a geometric node.
 fn num_children_geo(state: &RngState, depth: i32, cfg: &UtsConfig) -> i32 {
     let b_i: f64 = if depth > 0 {
         match cfg.shape {
@@ -122,18 +123,15 @@ fn num_children_geo(state: &RngState, depth: i32, cfg: &UtsConfig) -> i32 {
     } else {
         cfg.b_0
     };
-
     let p: f64 = 1.0 / (1.0 + b_i);
-    let h = rng_rand(state);
-    let u: f64 = rng_to_prob(h);
-    let num = ((1.0_f64 - u).ln() / (1.0_f64 - p).ln()).floor() as i32;
-    num.min(MAXNUMCHILDREN)
+    let u: f64 = rng_to_prob(rng_rand(state));
+    ((1.0_f64 - u).ln() / (1.0_f64 - p).ln())
+        .floor()
+        .min(MAXNUMCHILDREN as f64) as i32
 }
 
-/// Compute number of children for a binomial node.
 fn num_children_bin(state: &RngState, cfg: &UtsConfig) -> i32 {
-    let v = rng_rand(state);
-    let d: f64 = rng_to_prob(v);
+    let d: f64 = rng_to_prob(rng_rand(state));
     if d < cfg.non_leaf_prob {
         cfg.non_leaf_bf
     } else {
@@ -142,9 +140,6 @@ fn num_children_bin(state: &RngState, cfg: &UtsConfig) -> i32 {
 }
 
 /// Compute number of children for a node.
-///
-/// Matches the C `uts_numChildren` exactly, including the special BIN root
-/// handling where the root gets `floor(b_0)` children directly.
 pub fn num_children(state: &RngState, depth: i32, node_type: TreeType, cfg: &UtsConfig) -> i32 {
     let nc = match node_type {
         TreeType::Binomial => {
@@ -163,7 +158,6 @@ pub fn num_children(state: &RngState, depth: i32, node_type: TreeType, cfg: &Uts
             }
         }
     };
-
     if depth == 0 && node_type == TreeType::Binomial {
         nc.min(cfg.b_0.ceil() as i32)
     } else {
@@ -171,7 +165,20 @@ pub fn num_children(state: &RngState, depth: i32, node_type: TreeType, cfg: &Uts
     }
 }
 
-/// Determine the node type for children of a given node.
+/// Determine node type at a given depth.
+pub fn node_type_at_depth(depth: i32, cfg: &UtsConfig) -> TreeType {
+    if cfg.tree_type == TreeType::Hybrid {
+        if (depth as f64) < cfg.shift_depth * (cfg.gen_mx as f64) {
+            TreeType::Hybrid
+        } else {
+            TreeType::Binomial
+        }
+    } else {
+        cfg.tree_type
+    }
+}
+
+/// Determine child type.
 pub fn child_type(depth: i32, parent_type: TreeType, cfg: &UtsConfig) -> TreeType {
     match parent_type {
         TreeType::Hybrid => {
@@ -185,24 +192,10 @@ pub fn child_type(depth: i32, parent_type: TreeType, cfg: &UtsConfig) -> TreeTyp
     }
 }
 
-/// Determine the node type at a given depth for a config.
-pub fn node_type_at_depth(depth: i32, cfg: &UtsConfig) -> TreeType {
-    if cfg.tree_type == TreeType::Hybrid {
-        if (depth as f64) < cfg.shift_depth * (cfg.gen_mx as f64) {
-            TreeType::Hybrid
-        } else {
-            TreeType::Binomial
-        }
-    } else {
-        cfg.tree_type
-    }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// Standard UTS configurations from sample_trees.sh
+// Standard configurations from sample_trees.sh
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Small (~4M nodes)
 pub const T1: UtsConfig = UtsConfig {
     name: "T1",
     tree_type: TreeType::Geometric,
@@ -258,8 +251,6 @@ pub const T4: UtsConfig = UtsConfig {
     non_leaf_bf: 4,
     shift_depth: 0.5,
 };
-
-// Large (~100M nodes)
 pub const T1L: UtsConfig = UtsConfig {
     name: "T1L",
     tree_type: TreeType::Geometric,
@@ -293,8 +284,6 @@ pub const T3L: UtsConfig = UtsConfig {
     non_leaf_bf: 5,
     shift_depth: 0.0,
 };
-
-// Extra large (~1.6B nodes)
 pub const T1XL: UtsConfig = UtsConfig {
     name: "T1XL",
     tree_type: TreeType::Geometric,
@@ -306,8 +295,6 @@ pub const T1XL: UtsConfig = UtsConfig {
     non_leaf_bf: 0,
     shift_depth: 0.0,
 };
-
-// Extra extra large (~3-10B nodes)
 pub const T1XXL: UtsConfig = UtsConfig {
     name: "T1XXL",
     tree_type: TreeType::Geometric,
@@ -335,4 +322,53 @@ pub fn all_configs() -> Vec<&'static UtsConfig> {
     vec![
         &T1, &T5, &T2, &T3, &T4, &T1L, &T2L, &T3L, &T1XL, &T1XXL, &T3XXL,
     ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Global config (set before each run, read by task body)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+static UTS_CFG: std::sync::RwLock<Option<UtsConfig>> = std::sync::RwLock::new(None);
+
+/// Set the UTS config. Call before `lace_native::start()`.
+pub fn set_uts_config(cfg: &UtsConfig) {
+    *UTS_CFG.write().unwrap() = Some(cfg.clone());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Lace UTS task
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// UTS task body. Uses the config set by [`set_uts_config`].
+pub(crate) fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
+    let parent_state: RngState = unsafe {
+        let mut s = [0u8; 20];
+        std::ptr::copy_nonoverlapping(state, s.as_mut_ptr(), 20);
+        s
+    };
+
+    let nc = {
+        let guard = UTS_CFG.read().unwrap();
+        let cfg = guard
+            .as_ref()
+            .expect("call set_uts_config before running UTS");
+        let nt = node_type_at_depth(depth, cfg);
+        num_children(&parent_state, depth, nt, cfg)
+    }; // lock released here
+
+    if nc == 0 {
+        return 1;
+    }
+
+    let child_states: Vec<RngState> = (0..nc).map(|i| rng_spawn(&parent_state, i)).collect();
+
+    for cs in &child_states {
+        let _ = uts_spawn(w, cs.as_ptr(), depth + 1);
+    }
+
+    let mut count = 1i64;
+    for _ in 0..nc {
+        count += uts_sync(w);
+    }
+    count
 }

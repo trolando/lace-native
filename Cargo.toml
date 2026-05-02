@@ -9,5 +9,6 @@ members = [
     "examples/tree",
     "examples/bench",
     "examples/rayon-compare",
+    "benches/criterion",
     "tests/integration",
 ]

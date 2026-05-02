@@ -41,7 +41,7 @@ fn nqueens(w: &Worker, a: *const i32, n: i32, d: i32, i: i32) -> i64 {
     sum
 }
 
-fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
+fn uts_test(w: &Worker, state: *const u8, depth: i32) -> i64 {
     let parent_state: uts_lib::RngState = unsafe {
         let mut s = [0u8; 20];
         std::ptr::copy_nonoverlapping(state, s.as_mut_ptr(), 20);
@@ -64,12 +64,12 @@ fn uts(w: &Worker, state: *const u8, depth: i32) -> i64 {
         .collect();
 
     for cs in &child_states {
-        let _ = uts_spawn(w, cs.as_ptr(), depth + 1);
+        let _ = uts_test_spawn(w, cs.as_ptr(), depth + 1);
     }
 
     let mut count = 1i64;
     for _ in 0..nc {
-        count += uts_sync(w);
+        count += uts_test_sync(w);
     }
     count
 }
@@ -134,7 +134,7 @@ mod tests {
         lace_native::start(1, 0, 0);
 
         let root = uts_lib::rng_init(uts_lib::T1.seed);
-        let nodes = uts_run(root.as_ptr(), 0);
+        let nodes = uts_test_run(root.as_ptr(), 0);
         assert_eq!(nodes, 4130071, "UTS T1 should have 4130071 nodes");
 
         lace_native::stop();
@@ -170,7 +170,7 @@ mod tests {
         lace_native::start(4, 0, 0);
 
         let root = uts_lib::rng_init(uts_lib::T1.seed);
-        let nodes = uts_run(root.as_ptr(), 0);
+        let nodes = uts_test_run(root.as_ptr(), 0);
         assert_eq!(
             nodes, 4130071,
             "UTS T1 multi-worker should match single-worker"

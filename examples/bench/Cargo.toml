@@ -6,7 +6,6 @@ publish = false
 
 [dependencies]
 lace-native = { path = "../../lace-native" }
+lace-example-fib = { path = "../fib" }
+lace-example-nqueens = { path = "../nqueens" }
 lace-example-uts = { path = "../uts" }
-
-[build-dependencies]
-lace-native-build = { path = "../../lace-native-build" }

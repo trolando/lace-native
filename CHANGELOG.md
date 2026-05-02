@@ -21,14 +21,18 @@ Initial release.
 - Helpful parse error messages with line numbers and context
 - Developer's guide (`GUIDE.md`) with cross-language LTO documentation
 - CI: Linux, macOS, Windows with MSVC, feature matrix, clippy, rustfmt
+- CI: Cross-language LTO verification (Clang + lld)
+- CI: MSRV verification (Rust 1.70)
 
 ### Examples
 
 - **fib** — classic fork-join Fibonacci with `-w`/`-q` options and timing
 - **nqueens** — N-Queens with multi-spawn/sync loops
-- **uts** — Unbalanced Tree Search (T1/T1L/T1XL configs, SHA-1 RNG)
-- **bench** — scaling benchmark: measures fib + nqueens across 1..N workers
+- **uts** — Unbalanced Tree Search (T1/T1L/T1XL/T3L and all standard configs)
+- **tree** — parallel tree traversal demonstrating method tasks with `&self`
+- **bench** — scaling benchmark: fib + nqueens + UTS across 1..N workers
+- **rayon-compare** — side-by-side fib + nqueens + UTS T3L comparison with Rayon
 
 ### Benchmarks
 
-- **rayon-compare** — side-by-side fib + nqueens + UTS comparison with Rayon
+- **criterion** — statistically rigorous measurements of fib, nqueens, UTS with confidence intervals

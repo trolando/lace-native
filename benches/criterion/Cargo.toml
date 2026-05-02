@@ -1,0 +1,19 @@
+[package]
+name = "lace-bench-criterion"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lace-native = { path = "../../lace-native" }
+lace-example-fib = { path = "../../examples/fib" }
+lace-example-nqueens = { path = "../../examples/nqueens" }
+lace-example-uts = { path = "../../examples/uts" }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+rayon = "1"
+
+[[bench]]
+name = "lace_benchmarks"
+harness = false

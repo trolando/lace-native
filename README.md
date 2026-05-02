@@ -260,6 +260,29 @@ See the [Developer's Guide](GUIDE.md) for a tutorial covering task definitions, 
 
 ## Benchmarks
 
+### Criterion
+
+Statistically rigorous benchmarks with confidence intervals, regression detection, and HTML reports:
+
+```bash
+# Run all benchmarks (scaling + lace vs rayon comparison)
+cargo bench -p lace-bench-criterion
+
+# Lace scaling only
+cargo bench -p lace-bench-criterion -- "scaling"
+
+# Lace vs Rayon comparison only
+cargo bench -p lace-bench-criterion -- "compare"
+
+# Single benchmark
+cargo bench -p lace-bench-criterion -- "uts-T3-compare"
+cargo bench -p lace-bench-criterion -- "fib-scaling"
+```
+
+Results with HTML reports are saved in `target/criterion/`.
+
+### Rayon comparison
+
 The `examples/rayon-compare` crate runs the same algorithms (Fibonacci, N-Queens, UTS T3L) in both lace-native and Rayon with the same thread count:
 
 ```bash
