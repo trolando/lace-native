@@ -2,7 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0] — unreleased
+## [0.2.0] — unreleased
+
+### Added
+
+- `Worker::steal_random()` — attempt to steal and execute a task from another worker. Useful for keeping workers productive while blocking on external conditions (e.g., Sylvan-style GC).
+- `Worker::rng()` — per-worker pseudo-random number generator (xoroshiro128**), contention-free.
+- `set_verbosity(level)` — control Lace startup messages.
+- `is_worker()` — check whether the calling thread is a Lace worker.
+- `make_all_shared()` — expose all pending tasks on the current deque to thieves.
+- `count_reset()` / `count_report()` — reset and print per-worker steal/task statistics (requires `stats` feature).
+- `guard.is_stolen()` — check whether a spawned task has been stolen by another worker.
+- `guard.is_completed()` — check whether a spawned task has been completed.
+- `guard.result()` — non-blocking poll: returns `Some(value)` if completed, `None` otherwise.
+- `task_result_ptr()` — low-level access to completed task result storage (doc-hidden, used by generated code).
+
+## [0.1.0] — 2025-05-03
 
 Initial release.
 

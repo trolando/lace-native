@@ -1,6 +1,6 @@
 [package]
 name = "lace-native-build"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
 description = "Build-time code generator for lace-native task definitions"

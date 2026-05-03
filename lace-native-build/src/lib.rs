@@ -673,11 +673,7 @@ fn generate_rust(def: &DefFile) -> String {
     writeln!(o, "#[allow(unused_imports)]").unwrap();
     writeln!(o, "use std::ffi::c_void;").unwrap();
     writeln!(o, "#[allow(unused_imports)]").unwrap();
-    writeln!(
-        o,
-        "use lace_native::{{Worker, LaceWorker, LaceTask, is_stolen_task, is_completed_task}};"
-    )
-    .unwrap();
+    writeln!(o, "use lace_native::{{Worker, LaceWorker, LaceTask, is_stolen_task, is_completed_task, task_result_ptr}};").unwrap();
     writeln!(o).unwrap();
 
     if !def.rust_preamble.is_empty() {
@@ -934,6 +930,38 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
         "    pub fn is_completed(&self) -> bool {{ unsafe {{ is_completed_task(self._task) }} }}"
     )
     .unwrap();
+    if has_ret {
+        writeln!(
+            o,
+            "    /// Read the result of a completed task without consuming the guard."
+        )
+        .unwrap();
+        writeln!(o, "    ///").unwrap();
+        writeln!(
+            o,
+            "    /// Returns `Some(value)` if the task is completed, `None` otherwise."
+        )
+        .unwrap();
+        writeln!(
+            o,
+            "    /// This is a non-blocking poll — use `sync()` to wait for completion."
+        )
+        .unwrap();
+        writeln!(o, "    pub fn result(&self) -> Option<{}> {{", rr).unwrap();
+        writeln!(
+            o,
+            "        if unsafe {{ is_completed_task(self._task) }} {{"
+        )
+        .unwrap();
+        writeln!(
+            o,
+            "            Some(unsafe {{ *(task_result_ptr(self._task) as *const {}) }})",
+            rr
+        )
+        .unwrap();
+        writeln!(o, "        }} else {{ None }}").unwrap();
+        writeln!(o, "    }}").unwrap();
+    }
     writeln!(o, "}}\n").unwrap();
 }
 

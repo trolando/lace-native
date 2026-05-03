@@ -89,18 +89,20 @@ pub struct LaceTask {
 
 /// Check whether a spawned task has been stolen by another worker.
 ///
-/// Takes a raw `lace_task` pointer as returned by the C SPAWN wrapper.
+/// # Safety
+/// `task` must be a valid pointer returned by a SPAWN wrapper.
 #[doc(hidden)]
 pub unsafe fn is_stolen_task(task: *mut LaceTask) -> bool {
-    unsafe { lace_is_stolen_task_ext(task) != 0 }
+    lace_is_stolen_task_ext(task) != 0
 }
 
 /// Check whether a spawned task has been completed.
 ///
-/// Takes a raw `lace_task` pointer as returned by the C SPAWN wrapper.
+/// # Safety
+/// `task` must be a valid pointer returned by a SPAWN wrapper.
 #[doc(hidden)]
 pub unsafe fn is_completed_task(task: *mut LaceTask) -> bool {
-    unsafe { lace_is_completed_task_ext(task) != 0 }
+    lace_is_completed_task_ext(task) != 0
 }
 
 /// A handle to a Lace worker thread.
@@ -164,6 +166,20 @@ impl Worker {
     /// fast, non-synchronized random numbers.
     pub fn rng(&self) -> u64 {
         unsafe { lace_rng_ext(self.raw) }
+    }
+
+    /// Attempt to steal and execute one task from a random worker.
+    ///
+    /// This is a low-level function for the uncommon case where a task
+    /// needs to block on an external condition (e.g., waiting for a lock
+    /// or I/O) but wants to keep its worker productive. In normal
+    /// fork-join code, the framework handles work distribution through
+    /// sync automatically.
+    ///
+    /// Returns after executing at most one stolen task (or immediately
+    /// if no tasks are available to steal).
+    pub fn steal_random(&self) {
+        unsafe { lace_steal_random(self.raw) }
     }
 }
 
@@ -248,6 +264,43 @@ pub fn is_worker() -> bool {
     unsafe { lace_is_worker_ext() != 0 }
 }
 
+/// Make all tasks on the current worker's deque stealable.
+///
+/// Normally only tasks up to the split point are visible to thieves.
+/// This moves the split to the head, exposing all pending tasks.
+/// Useful when you want to ensure maximum parallelism is available
+/// before blocking.
+pub fn make_all_shared() {
+    unsafe { lace_make_all_shared_ext() }
+}
+
+/// Reset all internal statistics counters.
+///
+/// Only meaningful when the `stats` feature is enabled. Call between
+/// benchmark phases to get per-phase steal/task counts. Without the
+/// `stats` feature, this is a no-op.
+pub fn count_reset() {
+    unsafe { lace_count_reset() }
+}
+
+/// Print a statistics report to stdout.
+///
+/// Only meaningful when the `stats` feature is enabled. Prints
+/// per-worker steal attempts, successful steals, tasks executed,
+/// and split operations. Without the `stats` feature, this is a no-op.
+pub fn count_report() {
+    unsafe { lace_count_report_ext() }
+}
+
+/// Retrieve the raw result pointer from a completed task.
+///
+/// # Safety
+/// `task` must be a valid pointer to a completed `lace_task`.
+#[doc(hidden)]
+pub unsafe fn task_result_ptr(task: *mut LaceTask) -> *mut std::ffi::c_void {
+    lace_task_result_ext(task)
+}
+
 extern "C" {
     fn lace_start(n_workers: c_uint, dqsize: usize, stacksize: usize);
     fn lace_stop();
@@ -262,4 +315,9 @@ extern "C" {
     fn lace_rng_ext(lw: *mut LaceWorker) -> u64;
     fn lace_is_stolen_task_ext(t: *mut LaceTask) -> i32;
     fn lace_is_completed_task_ext(t: *mut LaceTask) -> i32;
+    fn lace_task_result_ext(t: *mut LaceTask) -> *mut std::ffi::c_void;
+    fn lace_make_all_shared_ext();
+    fn lace_count_reset();
+    fn lace_count_report_ext();
+    fn lace_steal_random(lw: *mut LaceWorker);
 }

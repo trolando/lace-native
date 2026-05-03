@@ -402,6 +402,74 @@ fn my_task(w: &Worker) {
 }
 ```
 
+**`Worker::steal_random()`** attempts to steal and execute one task from
+a random worker's deque. This is a low-level function for the uncommon
+case where a task blocks on an external condition (e.g., waiting for a
+lock) but wants to keep its worker productive:
+
+```rust
+fn wait_for_result(w: &Worker, flag: &AtomicBool) {
+    while !flag.load(Ordering::Acquire) {
+        w.steal_random(); // do useful work while waiting
+    }
+}
+```
+
+**`lace_native::make_all_shared()`** moves the split point to expose
+all pending tasks on the current worker's deque to thieves. Normally
+only tasks up to the split point are visible. Call this before a
+blocking operation to maximise available parallelism.
+
+## Task introspection
+
+Guards returned by `_spawn` provide non-blocking introspection:
+
+```rust
+let guard = fib_spawn(w, n - 1);
+// ... do other work ...
+
+if guard.is_stolen() {
+    // Another worker picked it up
+}
+if guard.is_completed() {
+    // Task finished — result is ready
+}
+if let Some(result) = guard.result() {
+    // Non-blocking poll: read result without consuming the guard
+    println!("Result so far: {}", result);
+}
+
+// Eventually, sync to consume the guard and get the final result
+let result = guard.sync(w);
+```
+
+- **`guard.is_stolen()`** — has another worker started executing this task?
+- **`guard.is_completed()`** — has the task finished executing?
+- **`guard.result()`** — returns `Some(value)` if completed, `None` otherwise.
+  Only available for tasks with a return type.
+
+## Statistics
+
+When the `stats` feature is enabled, Lace tracks per-worker counters
+(steal attempts, successful steals, tasks executed, split operations).
+Use `count_reset()` and `count_report()` for per-phase measurements:
+
+```rust
+lace_native::start(0, 0, 0);
+
+// Phase 1
+lace_native::count_reset();
+run_phase_1();
+lace_native::count_report(); // prints stats for phase 1
+
+// Phase 2
+lace_native::count_reset();
+run_phase_2();
+lace_native::count_report(); // prints stats for phase 2
+
+lace_native::stop(); // also prints final stats
+```
+
 ## Feature flags
 
 Set features on the `lace-native` crate. They control the C compilation
