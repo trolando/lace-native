@@ -620,7 +620,11 @@ fn generate_c(def: &DefFile) -> String {
         }
 
         // SPAWN, SYNC, DROP — take lace_worker*
-        writeln!(o, "void {pf}_SPAWN_w({s_pw}) {{ {pf}_SPAWN({s_wargs}); }}").unwrap();
+        writeln!(
+            o,
+            "lace_task* {pf}_SPAWN_w({s_pw}) {{ return {pf}_SPAWN({s_wargs}); }}"
+        )
+        .unwrap();
         if has_ret {
             writeln!(
                 o,
@@ -669,7 +673,11 @@ fn generate_rust(def: &DefFile) -> String {
     writeln!(o, "#[allow(unused_imports)]").unwrap();
     writeln!(o, "use std::ffi::c_void;").unwrap();
     writeln!(o, "#[allow(unused_imports)]").unwrap();
-    writeln!(o, "use lace_native::{{Worker, LaceWorker}};").unwrap();
+    writeln!(
+        o,
+        "use lace_native::{{Worker, LaceWorker, LaceTask, is_stolen_task, is_completed_task}};"
+    )
+    .unwrap();
     writeln!(o).unwrap();
 
     if !def.rust_preamble.is_empty() {
@@ -739,7 +747,7 @@ fn gen_ffi(o: &mut String, task: &TaskDef) {
     };
 
     writeln!(o, "extern \"C\" {{").unwrap();
-    writeln!(o, "    fn {}_SPAWN_w({});", pf, sw).unwrap();
+    writeln!(o, "    fn {}_SPAWN_w({}) -> *mut LaceTask;", pf, sw).unwrap();
     writeln!(o, "    fn {}_SYNC_w(w: *mut LaceWorker){};", pf, ret).unwrap();
     writeln!(o, "    fn {}_DROP_w(w: *mut LaceWorker);", pf).unwrap();
     writeln!(o, "    fn {}_RUN_w({}){};", pf, snw, ret).unwrap();
@@ -869,9 +877,10 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
             writeln!(o, "    _p: (),").unwrap();
         }
     }
+    writeln!(o, "    _task: *mut LaceTask,").unwrap();
     writeln!(o, "}}\n").unwrap();
 
-    // Impl sync/drop on guard
+    // Impl sync/drop/is_stolen/is_completed on guard
     if has_lt {
         writeln!(o, "impl<'__lace> {}<'__lace> {{", gn).unwrap();
     } else {
@@ -907,6 +916,22 @@ fn gen_guard(o: &mut String, task: &TaskDef, gn: &str, is_method: bool) {
         o,
         "    pub fn drop(self, w: &Worker) {{ unsafe {{ {}_DROP_w(w.as_ptr()) }} }}",
         pf
+    )
+    .unwrap();
+    writeln!(
+        o,
+        "    /// Check whether this task has been stolen by another worker."
+    )
+    .unwrap();
+    writeln!(
+        o,
+        "    pub fn is_stolen(&self) -> bool {{ unsafe {{ is_stolen_task(self._task) }} }}"
+    )
+    .unwrap();
+    writeln!(o, "    /// Check whether this task has been completed.").unwrap();
+    writeln!(
+        o,
+        "    pub fn is_completed(&self) -> bool {{ unsafe {{ is_completed_task(self._task) }} }}"
     )
     .unwrap();
     writeln!(o, "}}\n").unwrap();
@@ -949,12 +974,14 @@ fn guard_fields(task: &TaskDef, is_method: bool) -> String {
         }
     }
     if f.is_empty() {
-        if has_lifetime(task) {
-            "_p: PhantomData".into()
+        let phantom = if has_lifetime(task) {
+            "_p: PhantomData, "
         } else {
-            "_p: ()".into()
-        }
+            "_p: (), "
+        };
+        format!("{}_task: task", phantom)
     } else {
+        f.push("_task: task".into());
         f.join(", ")
     }
 }
@@ -1001,7 +1028,12 @@ fn gen_rust_free(o: &mut String, task: &TaskDef) {
         )
         .unwrap();
     }
-    writeln!(o, "    unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};", pf, args).unwrap();
+    writeln!(
+        o,
+        "    let task = unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};",
+        pf, args
+    )
+    .unwrap();
     writeln!(o, "    {} {{ {} }}", gn, gf).unwrap();
     writeln!(o, "}}\n").unwrap();
 
@@ -1157,7 +1189,7 @@ fn gen_rust_method_in_impl(o: &mut String, task: &TaskDef) {
     }
     writeln!(
         o,
-        "        unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};",
+        "        let task = unsafe {{ {}_SPAWN_w(w.as_ptr(), {}) }};",
         pf, all_a
     )
     .unwrap();

@@ -77,6 +77,32 @@ pub struct LaceWorker {
     _opaque: [u8; 0],
 }
 
+/// Opaque Lace task type (`lace_task` in C).
+///
+/// Returned by SPAWN and stored in guard structs. Used for task
+/// introspection (`is_stolen`, `is_completed`).
+#[doc(hidden)]
+#[repr(C)]
+pub struct LaceTask {
+    _opaque: [u8; 0],
+}
+
+/// Check whether a spawned task has been stolen by another worker.
+///
+/// Takes a raw `lace_task` pointer as returned by the C SPAWN wrapper.
+#[doc(hidden)]
+pub unsafe fn is_stolen_task(task: *mut LaceTask) -> bool {
+    unsafe { lace_is_stolen_task_ext(task) != 0 }
+}
+
+/// Check whether a spawned task has been completed.
+///
+/// Takes a raw `lace_task` pointer as returned by the C SPAWN wrapper.
+#[doc(hidden)]
+pub unsafe fn is_completed_task(task: *mut LaceTask) -> bool {
+    unsafe { lace_is_completed_task_ext(task) != 0 }
+}
+
 /// A handle to a Lace worker thread.
 ///
 /// Task body functions receive `&Worker` as their first parameter.
@@ -234,4 +260,6 @@ extern "C" {
     fn lace_worker_id_ext() -> i32;
     fn lace_is_worker_ext() -> i32;
     fn lace_rng_ext(lw: *mut LaceWorker) -> u64;
+    fn lace_is_stolen_task_ext(t: *mut LaceTask) -> i32;
+    fn lace_is_completed_task_ext(t: *mut LaceTask) -> i32;
 }

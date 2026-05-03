@@ -1,9 +1,8 @@
 /*
  * lace_helpers.c — Non-inline wrappers for static inline Lace functions.
  *
- * lace_get_worker(), lace_worker_id(), lace_is_worker(), and lace_rng()
- * are static inline in lace.h and cannot be called directly via FFI.
- * This provides extern wrappers.
+ * Several Lace functions are static inline in lace.h and cannot be
+ * called directly via FFI. This provides extern wrappers.
  */
 
 #include "lace.h"
@@ -22,4 +21,12 @@ int lace_is_worker_ext(void) {
 
 uint64_t lace_rng_ext(lace_worker *lw) {
     return lace_rng(lw);
+}
+
+int lace_is_stolen_task_ext(lace_task *t) {
+    return lace_is_stolen_task(t);
+}
+
+int lace_is_completed_task_ext(lace_task *t) {
+    return lace_is_completed_task(t);
 }
